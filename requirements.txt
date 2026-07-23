@@ -5,3 +5,12 @@ openpyxl>=3.1.2  # only needed for migrate_existing_data.py's one-time import
 requests>=2.32.0
 python-dotenv>=1.0.1
 mcp>=1.2.0
+
+# --- webapp/ (CV tailoring + cover letters + live UI) ---
+fastapi>=0.115.0
+uvicorn>=0.32.0
+python-multipart>=0.0.12  # file uploads (core CV)
+anthropic>=0.40.0         # AI generation (Haiku by default, see webapp/ai_generate.py)
+fpdf2>=2.8.0              # pure-Python PDF export -- no system libraries needed, deploys cleanly on free hosts
+pypdf>=5.1.0              # extract text from an uploaded .pdf core CV
+python-docx>=1.1.2        # extract text from an uploaded .docx core CV

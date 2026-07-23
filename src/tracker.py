@@ -229,3 +229,16 @@ def add_seen_message_ids(ids: set[str]) -> None:
     seen = get_last_seen_message_ids()
     seen.update(ids)
     _save_state_value("seen_message_ids", json.dumps(list(seen)[-MAX_SEEN_IDS:]))
+
+
+def get_state_value(key: str) -> Optional[str]:
+    """General-purpose read from the _State tab -- used by webapp/ modules
+    (e.g. cv_store.py) to cache things like a Drive folder/file id without
+    needing their own storage."""
+    return _load_state().get(key)
+
+
+def set_state_value(key: str, value: str) -> None:
+    """General-purpose write to the _State tab, RAW input mode (see
+    _save_state_value's docstring for why that matters)."""
+    _save_state_value(key, value)

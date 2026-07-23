@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Job Tracker</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #2a2f3a; --text: #e6e8ee;
+    --muted: #9aa3b2; --accent: #5b8def; --accent-dim: #33507a;
+    --green: #4caf7d; --red: #e0685f; --yellow: #d9b34c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    padding: 20px 28px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .actions { display: flex; gap: 10px; }
+  nav {
+    display: flex; gap: 4px; padding: 0 28px; border-bottom: 1px solid var(--border);
+  }
+  nav button {
+    background: none; border: none; color: var(--muted); padding: 12px 16px;
+    cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent;
+  }
+  nav button.active { color: var(--text); border-bottom-color: var(--accent); }
+  main { padding: 24px 28px; max-width: 980px; }
+  .tab { display: none; }
+  .tab.active { display: block; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  button.btn {
+    background: var(--accent); color: white; border: none; border-radius: 6px;
+    padding: 9px 16px; cursor: pointer; font-size: 14px; font-weight: 500;
+  }
+  button.btn:hover { background: #4c7bd6; }
+  button.btn:disabled { background: var(--accent-dim); cursor: not-allowed; }
+  button.btn.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  textarea, input[type=text] {
+    width: 100%; background: #0c0e12; border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 10px 12px; font-size: 14px; font-family: inherit;
+  }
+  textarea { min-height: 140px; resize: vertical; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .badge { padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge.applied { background: #3a3f4a; color: #c8ccd6; }
+  .badge.interview { background: #4a4326; color: var(--yellow); }
+  .badge.offer { background: #1e3f2c; color: var(--green); }
+  .badge.rejected { background: #45252a; color: var(--red); }
+  .badge.update { background: #223349; color: #7fa8e0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .row { display: flex; gap: 12px; }
+  .row > * { flex: 1; }
+  .status-msg { padding: 10px 12px; border-radius: 6px; font-size: 13px; margin-top: 10px; }
+  .status-msg.ok { background: #17301f; color: var(--green); }
+  .status-msg.err { background: #3a1e20; color: var(--red); }
+  .similar-box { background: #1a2436; border: 1px solid var(--accent-dim); border-radius: 8px; padding: 14px; margin-top: 14px; }
+  pre.generated { white-space: pre-wrap; font-family: inherit; font-size: 13px; background: #0c0e12; border: 1px solid var(--border); border-radius: 6px; padding: 12px; max-height: 320px; overflow-y: auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Job Tracker</h1>
+  <div class="actions">
+    <button class="btn secondary" id="scanBtn" style="display:none">Run scan now</button>
+    <a class="muted" id="sheetLink" href="#" target="_blank" style="margin-left:8px; align-self:center;">Open Sheet ↗</a>
+  </div>
+</header>
+
+<nav>
+  <button data-tab="applications" class="active">Applications</button>
+  <button data-tab="cv">CV Manager</button>
+  <button data-tab="generate">Generate</button>
+  <button data-tab="history">History</button>
+  <button data-tab="prompts">Prompts</button>
+</nav>
+
+<main>
+
+  <section class="tab active" id="tab-applications">
+    <div class="card">
+      <h2>Applications</h2>
+      <table id="appsTable">
+        <thead><tr><th>Company</th><th>Position</th><th>Status</th><th>Applied</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-cv">
+    <div class="card">
+      <h2>Core CV</h2>
+      <p class="muted" id="cvStatus">Loading...</p>
+      <label>Paste CV text (or upload a file below)</label>
+      <textarea id="cvText" placeholder="Paste your CV as plain text..."></textarea>
+      <div class="row" style="margin-top:10px;">
+        <input type="file" id="cvFile" accept=".pdf,.docx,.txt,.md" />
+        <button class="btn" id="saveCvBtn">Save core CV</button>
+      </div>
+      <div id="cvSaveMsg"></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-generate">
+    <div class="card">
+      <h2>Generate tailored CV + cover letter</h2>
+      <div class="row">
+        <div><label>Company</label><input type="text" id="genCompany" /></div>
+        <div><label>Position</label><input type="text" id="genPosition" /></div>
+      </div>
+      <label>Job description</label>
+      <textarea id="genJd" placeholder="Paste the full job description..."></textarea>
+      <div class="row" style="margin-top:12px;">
+        <button class="btn" id="genBtn">Generate</button>
+      </div>
+      <div id="genResult"></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-history">
+    <div class="card">
+      <h2>Generated history</h2>
+      <table id="historyTable">
+        <thead><tr><th>Created</th><th>Company</th><th>Position</th><th>CV</th><th>Cover letter</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-prompts">
+    <div class="card">
+      <h2>CV tailoring prompt</h2>
+      <textarea id="promptCvTailor"></textarea>
+      <button class="btn" style="margin-top:10px;" onclick="savePrompt('cv_tailor', 'promptCvTailor')">Save</button>
+      <div id="promptCvMsg"></div>
+    </div>
+    <div class="card">
+      <h2>Cover letter prompt</h2>
+      <textarea id="promptCoverLetter"></textarea>
+      <button class="btn" style="margin-top:10px;" onclick="savePrompt('cover_letter', 'promptCoverLetter')">Save</button>
+      <div id="promptClMsg"></div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+const api = (path, opts) => fetch(path, opts).then(async r => {
+  if (!r.ok) { const body = await r.json().catch(() => ({})); throw new Error(body.detail || r.statusText); }
+  return r.json();
+});
+
+// --- Tabs ---
+document.querySelectorAll('nav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'history') loadHistory();
+    if (btn.dataset.tab === 'prompts') loadPrompts();
+  });
+});
+
+// --- Applications ---
+function badge(status) {
+  const s = (status || 'applied').toLowerCase();
+  return `<span class="badge ${s}">${s}</span>`;
+}
+
+async function loadApplications() {
+  const data = await api('/api/applications');
+  document.getElementById('sheetLink').href = data.sheet_url || '#';
+  const tbody = document.querySelector('#appsTable tbody');
+  tbody.innerHTML = (data.applications || []).slice().reverse().map(a => `
+    <tr>
+      <td>${a.Company || ''}</td>
+      <td>${a.Position || ''}</td>
+      <td>${badge(a.Status)}</td>
+      <td>${a['Applied Date'] || ''}</td>
+      <td>${a['Gmail Link'] ? `<a href="${a['Gmail Link']}" target="_blank">email ↗</a>` : ''}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" class="muted">No applications tracked yet.</td></tr>';
+}
+
+// --- CV Manager ---
+async function loadCv() {
+  const data = await api('/api/cv');
+  document.getElementById('cvStatus').textContent = data.has_cv
+    ? 'A core CV is saved. Paste new text or upload a file below to replace it.'
+    : 'No core CV uploaded yet.';
+  if (data.text) document.getElementById('cvText').value = data.text;
+}
+
+document.getElementById('saveCvBtn').addEventListener('click', async () => {
+  const msg = document.getElementById('cvSaveMsg');
+  const file = document.getElementById('cvFile').files[0];
+  const text = document.getElementById('cvText').value;
+  const form = new FormData();
+  if (file) form.append('file', file);
+  else if (text.trim()) form.append('text', text);
+  else { msg.innerHTML = '<div class="status-msg err">Paste CV text or choose a file first.</div>'; return; }
+
+  try {
+    const data = await api('/api/cv', { method: 'POST', body: form });
+    document.getElementById('cvText').value = data.text;
+    msg.innerHTML = '<div class="status-msg ok">Core CV saved.</div>';
+    loadCv();
+  } catch (e) {
+    msg.innerHTML = `<div class="status-msg err">${e.message}</div>`;
+  }
+});
+
+// --- Generate ---
+document.getElementById('genBtn').addEventListener('click', () => doGenerate(false));
+
+async function doGenerate(forceNew) {
+  const result = document.getElementById('genResult');
+  const company = document.getElementById('genCompany').value;
+  const position = document.getElementById('genPosition').value;
+  const job_description = document.getElementById('genJd').value;
+  if (!company || !position || !job_description.trim()) {
+    result.innerHTML = '<div class="status-msg err">Fill in company, position, and job description.</div>';
+    return;
+  }
+  result.innerHTML = '<p class="muted">Generating...</p>';
+  try {
+    const data = await api('/api/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company, position, job_description, force_new: forceNew }),
+    });
+    if (data.similar_match) {
+      const m = data.similar_match;
+      result.innerHTML = `
+        <div class="similar-box">
+          <strong>This looks similar to an earlier application</strong>
+          <p class="muted">${m.company} — ${m.position} (${Math.round(m.score * 100)}% similar)</p>
+          <p>
+            <a href="${m.cv_link}" target="_blank">View that CV ↗</a> ·
+            <a href="${m.cover_letter_link}" target="_blank">View that cover letter ↗</a>
+          </p>
+          <button class="btn secondary" onclick="doGenerate(true)">Generate a fresh one anyway</button>
+        </div>`;
+      return;
+    }
+    const g = data.generated;
+    result.innerHTML = `
+      <div class="status-msg ok">Generated. Saved to Drive and added to History.</div>
+      <label>Tailored CV</label>
+      <pre class="generated">${g.cv_text}</pre>
+      <p><a href="/api/download/${g.cv_file_id}" target="_blank">Download CV PDF ↓</a></p>
+      <label>Cover letter</label>
+      <pre class="generated">${g.cover_letter_text}</pre>
+      <p><a href="/api/download/${g.cover_letter_file_id}" target="_blank">Download cover letter PDF ↓</a></p>
+    `;
+  } catch (e) {
+    result.innerHTML = `<div class="status-msg err">${e.message}</div>`;
+  }
+}
+
+// --- History ---
+async function loadHistory() {
+  const data = await api('/api/cv-versions');
+  const tbody = document.querySelector('#historyTable tbody');
+  tbody.innerHTML = (data.versions || []).map(v => `
+    <tr>
+      <td>${v['Created At']}</td>
+      <td>${v.Company}</td>
+      <td>${v.Position}</td>
+      <td><a href="${v['Tailored CV Drive Link']}" target="_blank">view ↗</a></td>
+      <td><a href="${v['Cover Letter Drive Link']}" target="_blank">view ↗</a></td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" class="muted">Nothing generated yet.</td></tr>';
+}
+
+// --- Prompts ---
+async function loadPrompts() {
+  const data = await api('/api/prompts');
+  document.getElementById('promptCvTailor').value = data.prompts.cv_tailor || '';
+  document.getElementById('promptCoverLetter').value = data.prompts.cover_letter || '';
+}
+
+async function savePrompt(name, textareaId) {
+  const msgId = name === 'cv_tailor' ? 'promptCvMsg' : 'promptClMsg';
+  const msg = document.getElementById(msgId);
+  try {
+    await api('/api/prompts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, template: document.getElementById(textareaId).value }),
+    });
+    msg.innerHTML = '<div class="status-msg ok">Saved.</div>';
+  } catch (e) {
+    msg.innerHTML = `<div class="status-msg err">${e.message}</div>`;
+  }
+}
+
+// --- Manual scan trigger ---
+async function initScanButton() {
+  const data = await api('/api/config');
+  if (!data.can_trigger_scan) return;
+  const btn = document.getElementById('scanBtn');
+  btn.style.display = 'inline-block';
+  btn.addEventListener('click', async () => {
+    btn.disabled = true; btn.textContent = 'Triggering...';
+    try {
+      await api('/api/trigger-scan', { method: 'POST' });
+      btn.textContent = 'Scan triggered ✓';
+    } catch (e) {
+      btn.textContent = 'Run scan now';
+      alert(e.message);
+    } finally {
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = 'Run scan now'; }, 4000);
+    }
+  });
+}
+
+loadApplications();
+loadCv();
+initScanButton();
+</script>
+
+</body>
+</html>

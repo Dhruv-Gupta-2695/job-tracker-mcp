@@ -1,0 +1,44 @@
+# Render "Blueprint" definition -- lets Render auto-configure the web
+# service from this file instead of clicking through the dashboard by
+# hand. Values marked `sync: false` are secrets: Render will prompt you to
+# type each one in during setup rather than reading a default from here
+# (this repo is public, so nothing sensitive is ever committed to it).
+services:
+  - type: web
+    name: job-tracker-webapp
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # Materializes credentials.json/token.json from the same secrets you
+    # already created for GitHub Actions (see README) -- Render's free tier
+    # has no persistent disk, so these are written fresh on every boot,
+    # exactly like the GitHub Actions workflow already does.
+    startCommand: >
+      bash -c "echo \"$GMAIL_CREDENTIALS_JSON\" > credentials.json &&
+      echo \"$GMAIL_TOKEN_JSON\" > token.json &&
+      uvicorn webapp.app:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: GMAIL_CREDENTIALS_JSON
+        sync: false
+      - key: GMAIL_TOKEN_JSON
+        sync: false
+      - key: GOOGLE_SHEET_ID
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: claude-haiku-4-5-20251001
+      - key: WEBAPP_PASSWORD
+        sync: false
+      - key: CANDIDATE_NAME
+        sync: false
+      - key: GITHUB_PAT
+        sync: false
+      - key: GITHUB_REPO
+        sync: false
+      - key: GITHUB_WORKFLOW_FILE
+        value: scan.yml
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false

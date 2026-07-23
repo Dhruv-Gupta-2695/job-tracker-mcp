@@ -207,6 +207,85 @@ the code runs. When it happens, you'll get the same Telegram alert -- the
 fix is to run `python3 run_once.py` locally once to re-auth, then update
 the `GMAIL_TOKEN_JSON` secret on GitHub with the new `token.json` contents.
 
+## The webapp: CV tailoring, cover letters, live UI
+
+A second, optional piece (`webapp/`): view your tracked applications, upload
+or update a "core CV", paste a job description and get an AI-tailored CV +
+matching cover letter as PDFs, browse everything you've generated before
+(with a similarity check that suggests reusing an earlier version instead
+of regenerating from scratch), edit the AI prompts, and trigger a scan on
+demand. It's a separate FastAPI app from the Gmail-scanning side -- you can
+run one without the other.
+
+### One-time setup
+
+1. Get an API key at [console.anthropic.com](https://console.anthropic.com)
+   -- this is separate billing from any claude.ai/Claude Pro/Max
+   subscription, they're two different products. With the default Haiku
+   model, generation costs roughly $0.01 per tailored CV and $0.007 per
+   cover letter, so a few dollars of credit covers hundreds of each. Add it
+   as `ANTHROPIC_API_KEY`.
+2. Pick a `WEBAPP_PASSWORD`. This repo is public and a free host gives your
+   app a public URL, so without a password anyone who finds that URL could
+   read your CV, generate documents on your Anthropic bill, and see your
+   application history. There's no other login system -- just this one
+   shared password (HTTP Basic Auth), and it's required: the app refuses to
+   serve any request if it's unset, rather than quietly running open.
+3. Re-auth once more locally (delete `token.json`, run `python3
+   run_once.py`) to grant the `drive.file` scope alongside `gmail.compose`
+   -- if you haven't re-authed yet for the follow-up-drafts feature, do
+   both scopes in one pass. Update the `GMAIL_TOKEN_JSON` secret on GitHub
+   afterward.
+4. Run `python3 upgrade_sheet.py` once more to add the hidden
+   `_CVVersions` and `_Prompts` tabs to your Sheet.
+5. *(Optional, for the "Run scan now" button)* Create a fine-grained GitHub
+   Personal Access Token at
+   [github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens)
+   -- repository access limited to just this one repo, permission
+   "Actions: Read and write". Set `GITHUB_PAT` and `GITHUB_REPO` (e.g.
+   `your-username/job-tracker-mcp`). Leave both unset to just hide the
+   button; everything else still works.
+
+### Deploy to Render (free)
+
+1. Push this repo's latest commit to GitHub (the same repo the GitHub
+   Actions scan already lives in).
+2. On [render.com](https://render.com): New -> Blueprint, connect the repo.
+   Render reads `render.yaml` and prompts you for each secret value --
+   `GMAIL_CREDENTIALS_JSON`/`GMAIL_TOKEN_JSON` are the same file contents
+   you already used for the GitHub Actions secrets, the rest as set up
+   above.
+3. Deploy. You'll get a URL like `https://job-tracker-webapp.onrender.com`
+   -- bookmark it.
+
+Free-tier tradeoff: Render spins the service down after 15 minutes with no
+traffic, and the next visit takes about a minute to spin back up -- a real
+but minor annoyance for $0/month (Render's paid tiers, ~$5-7/month, remove
+this if it bothers you).
+
+### How the CV/cover-letter pieces fit together
+
+- **Core CV**: stored as one file in a "Job Tracker CVs" folder in your
+  Google Drive, via the `drive.file` scope (which can only ever see files
+  this app created -- never your whole Drive). Upload once from the CV
+  Manager tab, replace any time.
+- **Generation**: paste a job description, and it's checked against every
+  job description you've generated for before (`src/similarity.py`, plain
+  `difflib` text comparison -- no extra API cost). If it looks similar
+  enough, you're shown the earlier CV/cover letter instead of generating a
+  new one, with an option to generate fresh anyway. Otherwise, the AI model
+  tailors your core CV and drafts a cover letter, both exported as PDFs and
+  saved to Drive.
+- **History**: every generated version is logged in a hidden
+  `_CVVersions` tab in your Sheet -- this is the "database" the similarity
+  check reads from.
+- **Prompts**: the exact instructions sent to the model for CV tailoring
+  and cover letter writing live in a hidden `_Prompts` tab and are editable
+  from the Prompts tab in the UI -- change tone, structure, or emphasis any
+  time without touching code. A template that drops the required
+  `{core_cv}`/`{job_description}` placeholders is rejected with a clear
+  error rather than silently sending a broken prompt to the model.
+
 ## How detection works (and where to tune it)
 
 `src/classifier.py` uses keyword/domain heuristics, not ML:

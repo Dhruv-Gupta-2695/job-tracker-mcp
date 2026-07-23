@@ -21,6 +21,7 @@ Usage: python3 upgrade_sheet.py
 from googleapiclient.discovery import build
 
 from src import config, gmail_client, google_auth
+from src.prompts import DEFAULT_PROMPTS
 from src.tracker import COLUMNS
 
 STATUS_OPTIONS = ["applied", "interview", "offer", "rejected", "update"]
@@ -32,6 +33,14 @@ STATUS_COLORS = {
     "update": {"red": 0.80, "green": 0.88, "blue": 0.98},    # light blue
 }
 DASHBOARD_SHEET_ID = 999001  # fixed custom id so we can reference it within one batchUpdate
+CV_VERSIONS_SHEET_ID = 999002
+PROMPTS_SHEET_ID = 999003
+
+CV_VERSIONS_HEADER = [
+    "ID", "Created At", "Company", "Position", "Job Description Snippet",
+    "Tailored CV Drive Link", "Cover Letter Drive Link",
+    "Tailored CV File ID", "Cover Letter File ID",
+]
 
 
 def migrate_schema(sheets, sheet_id, applications_gid, header_row):
@@ -293,6 +302,49 @@ def add_dashboard(sheets, sheet_id, sheets_by_title, existing_sheets):
           "first reply, applications-by-company breakdown, and a pie chart.")
 
 
+def setup_cv_versions_tab(sheets, sheet_id, sheets_by_title):
+    """"_CVVersions" is the history/"database" the webapp's similarity
+    matching reads from -- one row per AI-tailored CV + cover letter ever
+    generated, with a link to each PDF in Drive (see src/cv_store.py)."""
+    if "_CVVersions" in sheets_by_title:
+        print("_CVVersions tab already exists -- skipping.")
+        return
+    sheets.spreadsheets().batchUpdate(spreadsheetId=sheet_id, body={"requests": [{
+        "addSheet": {"properties": {
+            "sheetId": CV_VERSIONS_SHEET_ID, "title": "_CVVersions",
+            "hidden": True, "index": 0,
+        }}
+    }]}).execute()
+    sheets.spreadsheets().values().update(
+        spreadsheetId=sheet_id, range="_CVVersions!A1", valueInputOption="RAW",
+        body={"values": [CV_VERSIONS_HEADER]},
+    ).execute()
+    print("Created _CVVersions tab (hidden -- this is the CV/cover-letter history the webapp reads).")
+
+
+def setup_prompts_tab(sheets, sheet_id, sheets_by_title):
+    """"_Prompts" holds the editable CV-tailoring and cover-letter prompt
+    templates the webapp UI lets you change -- seeded with sensible
+    defaults on first run, left untouched on every run after that so your
+    edits are never overwritten."""
+    if "_Prompts" in sheets_by_title:
+        print("_Prompts tab already exists -- leaving your saved prompts alone.")
+        return
+    sheets.spreadsheets().batchUpdate(spreadsheetId=sheet_id, body={"requests": [{
+        "addSheet": {"properties": {
+            "sheetId": PROMPTS_SHEET_ID, "title": "_Prompts",
+            "hidden": True, "index": 0,
+        }}
+    }]}).execute()
+    rows = [["Prompt Name", "Template"]]
+    rows += [[name, template] for name, template in DEFAULT_PROMPTS.items()]
+    sheets.spreadsheets().values().update(
+        spreadsheetId=sheet_id, range="_Prompts!A1", valueInputOption="RAW",
+        body={"values": rows},
+    ).execute()
+    print("Created _Prompts tab (hidden), seeded with default cv_tailor and cover_letter prompts.")
+
+
 def main() -> None:
     creds = google_auth.get_credentials()
     sheets = build("sheets", "v4", credentials=creds)
@@ -317,6 +369,8 @@ def main() -> None:
 
     polish_applications_tab(sheets, sheet_id, applications_gid, spreadsheet["sheets"])
     add_dashboard(sheets, sheet_id, sheets_by_title, spreadsheet["sheets"])
+    setup_cv_versions_tab(sheets, sheet_id, sheets_by_title)
+    setup_prompts_tab(sheets, sheet_id, sheets_by_title)
 
     print(f"\nDone. View it at: {config.GOOGLE_SHEET_URL}")
 
