@@ -1,0 +1,7 @@
+google-api-python-client>=2.140.0
+google-auth-oauthlib>=1.2.0
+google-auth-httplib2>=0.2.0
+openpyxl>=3.1.2  # only needed for migrate_existing_data.py's one-time import
+requests>=2.32.0
+python-dotenv>=1.0.1
+mcp>=1.2.0
