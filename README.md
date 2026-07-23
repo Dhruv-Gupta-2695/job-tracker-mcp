@@ -77,13 +77,18 @@ pip install -r requirements.txt
    `token.json` caches the session.
 
 Scopes used: `gmail.readonly` (can never send, delete, or modify anything in
-your inbox) and `spreadsheets` (only touches the one Sheet this project
-creates for itself).
+your inbox), `spreadsheets` (only touches the one Sheet this project creates
+for itself), and `gmail.compose` (can only create/edit Gmail Drafts -- it can
+never send mail on its own; a draft always requires you to open it and click
+Send yourself).
 
-If you already had this project set up before the Sheets migration, delete
-your existing `token.json` once so the next login grants the new
-`spreadsheets` scope alongside the Gmail one -- otherwise Sheets calls will
-fail with a permissions error even though Gmail still works fine.
+If you already had this project set up before the Sheets migration (or
+before the `gmail.compose` scope was added for follow-up drafts), delete
+your existing `token.json` once so the next login grants the new scope(s) --
+otherwise the corresponding API calls will fail with a permissions error
+even though the rest keeps working fine. If you're running on GitHub
+Actions, remember to update the `GMAIL_TOKEN_JSON` secret with the new
+`token.json` contents afterward.
 
 ### 3. Create the Google Sheet
 
@@ -100,9 +105,12 @@ port its rows over:
 python3 migrate_existing_data.py
 ```
 
-Then polish it -- adds a Dashboard tab (status counts + pie chart), freezes
-the header row, color-codes rows by status, and adds a dropdown on the
-Status column. Safe to re-run any time (e.g. after a schema change):
+Then polish it -- adds a Dashboard tab (status counts + pie chart, response
+rate, average days to first reply, and an applications-by-company
+breakdown), freezes the header row, color-codes rows by status, and adds a
+dropdown on the Status column. Safe to re-run any time (e.g. after a schema
+change, or to pick up the newer Dashboard metrics on a sheet you set up
+before they existed):
 ```bash
 python3 upgrade_sheet.py
 ```
@@ -231,6 +239,13 @@ the `GMAIL_TOKEN_JSON` secret on GitHub with the new `token.json` contents.
   email -- not a truncated snippet. "Last Update Summary" likewise holds the
   full body of whatever reply triggered the update, so you never have to
   guess what a short preview was cut off from.
+- **Stale-application follow-up nudges**: if an application has sat at
+  "applied" with zero reply for `STALE_NUDGE_DAYS` (default 21, set to 0 to
+  disable), you get a one-time Telegram nudge, and a polite follow-up email
+  is drafted in your Gmail Drafts (addressed to the original sender, in the
+  same thread) -- never sent automatically, you review and send it
+  yourself. Tracked via the "Stale Nudge Sent" column so it only ever
+  happens once per application.
 
 ## Notes and limitations
 

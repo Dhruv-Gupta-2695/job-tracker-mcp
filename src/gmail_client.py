@@ -9,6 +9,7 @@ import base64
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from email.mime.text import MIMEText
 
 from googleapiclient.discovery import build
 
@@ -70,6 +71,31 @@ def thread_url(thread_id: str) -> str:
     """A direct Gmail web link that opens the whole thread (original
     confirmation email plus every reply) in the browser."""
     return f"https://mail.google.com/mail/u/0/#all/{thread_id}"
+
+
+def extract_email_address(sender: str) -> str:
+    """Pull just the email address out of a raw From header, e.g.
+    '"Acme Recruiting" <jobs@acme.com>' -> 'jobs@acme.com'. Falls back to
+    the raw string if no angle-bracket address is found."""
+    match = re.search(r"<([^<>]+)>", sender)
+    return match.group(1).strip() if match else sender.strip()
+
+
+def create_draft(service, to_address: str, subject: str, body_text: str, thread_id: str = "") -> str:
+    """Create a Gmail Draft (never sends anything -- the user has to open it
+    and click Send themselves). Requires the gmail.compose scope. Returns
+    the new draft's id."""
+    message = MIMEText(body_text)
+    message["to"] = to_address
+    message["subject"] = subject
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+
+    body: dict = {"message": {"raw": raw}}
+    if thread_id:
+        body["message"]["threadId"] = thread_id
+
+    draft = service.users().drafts().create(userId="me", body=body).execute()
+    return draft["id"]
 
 
 def fetch_messages_since(service, after: datetime, extra_query: str = "") -> list[EmailMessage]:

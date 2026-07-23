@@ -41,7 +41,9 @@ def main() -> None:
                 log.info("New applications: %s", result["new_applications"])
             if result["updates"]:
                 log.info("Updates sent: %s", result["updates"])
-            if not result["new_applications"] and not result["updates"]:
+            if result["stale_nudges"]:
+                log.info("Stale-application nudges sent: %s", result["stale_nudges"])
+            if not result["new_applications"] and not result["updates"] and not result["stale_nudges"]:
                 log.info("Nothing new this pass.")
         except GmailAuthExpired:
             log.exception("Gmail login expired -- stopping the daemon")

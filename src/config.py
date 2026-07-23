@@ -29,6 +29,11 @@ GMAIL_TOKEN_PATH = _get("GMAIL_TOKEN_PATH", str(PROJECT_ROOT / "token.json"))
 GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/spreadsheets",
+    # gmail.compose: lets this create/edit Gmail Drafts only -- it can never
+    # send mail on its own, delete anything, or read mail beyond what
+    # gmail.readonly already grants. Used for the auto-drafted follow-up
+    # emails feature (drafts always require you to click Send yourself).
+    "https://www.googleapis.com/auth/gmail.compose",
 ]
 
 # --- Telegram ---
@@ -44,3 +49,7 @@ POLL_INTERVAL_MINUTES = int(_get("POLL_INTERVAL_MINUTES", "15"))
 
 # How many days back to look the very first time the tool runs
 INITIAL_LOOKBACK_DAYS = int(_get("INITIAL_LOOKBACK_DAYS", "30"))
+
+# Send a Telegram nudge if an application has sat at "applied" (no reply of
+# any kind) for at least this many days. Set to 0 to disable.
+STALE_NUDGE_DAYS = int(_get("STALE_NUDGE_DAYS", "21"))

@@ -19,7 +19,7 @@ from . import gmail_client, sheets_client
 COLUMNS = [
     "Company", "Position", "Status", "Applied Date", "Sender",
     "Thread ID", "Gmail Link", "Description", "Last Update Date",
-    "Last Update Summary", "Telegram Sent",
+    "Last Update Summary", "Telegram Sent", "Stale Nudge Sent",
 ]
 
 # Derived from COLUMNS rather than hardcoded, so adding/removing a column
@@ -105,7 +105,7 @@ def add_application(
     sheets_client.append_row(APPLICATIONS_RANGE, [
         company, position, "applied", applied_at.strftime("%Y-%m-%d"),
         sender, thread_id, gmail_client.thread_url(thread_id),
-        description[:MAX_CELL_CHARS], "", "", "No",
+        description[:MAX_CELL_CHARS], "", "", "No", "No",
     ])
     return True
 
@@ -123,6 +123,47 @@ def update_application(
     row[COLUMNS.index("Last Update Date")] = updated_at.strftime("%Y-%m-%d %H:%M")
     row[COLUMNS.index("Last Update Summary")] = summary[:MAX_CELL_CHARS]
     row[COLUMNS.index("Telegram Sent")] = "Yes" if telegram_sent else "No"
+    sheets_client.update_row("Applications", row_num, row)
+
+
+def get_stale_applications(threshold_days: int) -> list[dict]:
+    """Applications still sitting at "applied" (i.e. no reply of any kind
+    yet) whose Applied Date is threshold_days or older, and that haven't
+    already had a nudge sent. Each dict includes "_row" (1-indexed sheet
+    row, for mark_stale_nudge_sent) alongside the usual COLUMNS fields."""
+    status_col = COLUMNS.index("Status")
+    date_col = COLUMNS.index("Applied Date")
+    nudge_col = COLUMNS.index("Stale Nudge Sent")
+    now = datetime.now()
+
+    stale = []
+    for i, row in enumerate(_get_rows()):
+        if row[status_col].strip().lower() != "applied":
+            continue
+        if row[nudge_col].strip().lower() == "yes":
+            continue
+        if not row[date_col]:
+            continue
+        try:
+            applied_date = datetime.strptime(row[date_col], "%Y-%m-%d")
+        except ValueError:
+            continue
+        if (now - applied_date).days >= threshold_days:
+            entry = dict(zip(COLUMNS, row))
+            entry["_row"] = i + 2
+            stale.append(entry)
+    return stale
+
+
+def mark_stale_nudge_sent(row_num: int) -> None:
+    """Flip "Stale Nudge Sent" to Yes for one row (by 1-indexed sheet row,
+    as returned in get_stale_applications()'s "_row" field) so the same
+    application doesn't get nudged again on the next scan."""
+    values = sheets_client.get_values(f"Applications!A{row_num}:{chr(ord('A') + len(COLUMNS) - 1)}{row_num}")
+    if not values:
+        return
+    row = values[0] + [""] * (len(COLUMNS) - len(values[0]))
+    row[COLUMNS.index("Stale Nudge Sent")] = "Yes"
     sheets_client.update_row("Applications", row_num, row)
 
 

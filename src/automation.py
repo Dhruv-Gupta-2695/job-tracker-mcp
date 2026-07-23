@@ -107,8 +107,76 @@ def check_thread_updates() -> list[dict]:
     return updates
 
 
+def _followup_subject(position: str) -> str:
+    return f"Following up on my application for {position}"
+
+
+def _followup_body(company: str, position: str, applied_date: str) -> str:
+    return (
+        f"Hello,\n\n"
+        f"I wanted to follow up on my application for the {position} role at {company}, "
+        f"submitted on {applied_date}. I remain very interested in the opportunity and "
+        f"would appreciate any update you're able to share on its status.\n\n"
+        f"Thank you for your time and consideration.\n\n"
+        f"Best regards"
+    )
+
+
+def check_stale_applications() -> list[dict]:
+    """For anything that's sat at "applied" with zero reply for
+    config.STALE_NUDGE_DAYS or more: draft a polite follow-up email in Gmail
+    Drafts (never sent automatically -- you review and hit Send yourself)
+    and send a Telegram nudge. No-ops entirely if STALE_NUDGE_DAYS is 0.
+
+    Each application is only ever processed once (tracked via the "Stale
+    Nudge Sent" column), and that flag gets set even if a step below fails --
+    on purpose, since retrying draft creation on the next run would create a
+    second duplicate draft, which is worse than an occasional missed nudge
+    for a personal tool like this. Failures are printed so they show up in
+    GitHub Actions / daemon logs."""
+    if config.STALE_NUDGE_DAYS <= 0:
+        return []
+
+    gmail_service = None
+    nudged = []
+    for app in tracker.get_stale_applications(config.STALE_NUDGE_DAYS):
+        applied_date = datetime.strptime(app["Applied Date"], "%Y-%m-%d")
+        days_stale = (datetime.now() - applied_date).days
+
+        draft_created = False
+        try:
+            if gmail_service is None:
+                gmail_service = gmail_client.get_gmail_service()
+            gmail_client.create_draft(
+                gmail_service,
+                to_address=gmail_client.extract_email_address(app["Sender"]),
+                subject=_followup_subject(app["Position"]),
+                body_text=_followup_body(app["Company"], app["Position"], app["Applied Date"]),
+                thread_id=app["Thread ID"],
+            )
+            draft_created = True
+        except Exception as exc:  # noqa: BLE001 - don't let one bad draft kill the run
+            print(f"[gmail_client] failed to create follow-up draft for {app['Company']}: {exc}")
+
+        try:
+            telegram_notify.send_stale_nudge(
+                company=app["Company"], position=app["Position"],
+                days_stale=days_stale, draft_created=draft_created,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[telegram_notify] failed to send stale nudge for {app['Company']}: {exc}")
+
+        tracker.mark_stale_nudge_sent(app["_row"])
+        nudged.append({
+            "company": app["Company"], "position": app["Position"],
+            "days_stale": days_stale, "draft_created": draft_created,
+        })
+    return nudged
+
+
 def run_once() -> dict:
-    """Convenience entry point: does both steps, returns a summary."""
+    """Convenience entry point: does all three steps, returns a summary."""
     new_apps = scan_new_applications()
     updates = check_thread_updates()
-    return {"new_applications": new_apps, "updates": updates}
+    nudges = check_stale_applications()
+    return {"new_applications": new_apps, "updates": updates, "stale_nudges": nudges}

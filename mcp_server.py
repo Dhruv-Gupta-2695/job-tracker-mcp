@@ -64,7 +64,9 @@ def run_full_check() -> str:
         parts.append(f"{len(result['new_applications'])} new application(s) added")
     if result["updates"]:
         parts.append(f"{len(result['updates'])} update(s) found and sent to Telegram")
-    return "; ".join(parts) if parts else "Nothing new: no new applications or updates."
+    if result["stale_nudges"]:
+        parts.append(f"{len(result['stale_nudges'])} stale-application nudge(s) sent")
+    return "; ".join(parts) if parts else "Nothing new: no new applications, updates, or stale nudges."
 
 
 @mcp.tool()

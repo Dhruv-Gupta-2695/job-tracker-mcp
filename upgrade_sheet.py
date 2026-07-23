@@ -94,6 +94,36 @@ def migrate_schema(sheets, sheet_id, applications_gid, header_row):
     print(f"Backfilled Gmail Link + Description for {len(rows)} existing row(s).")
 
 
+def migrate_stale_nudge_column(sheets, sheet_id, header_row):
+    """Add the "Stale Nudge Sent" column (used by the stale-application
+    follow-up nudge feature) if it isn't there yet, backfilling "No" for
+    every existing row."""
+    if "Stale Nudge Sent" in header_row:
+        print("Stale Nudge Sent column already present -- skipping.")
+        return
+
+    print("Adding Stale Nudge Sent column...")
+    last_col_idx = len(header_row)  # 0-indexed position right after the current last column
+    last_col_letter = chr(ord("A") + last_col_idx)
+
+    sheets.spreadsheets().values().update(
+        spreadsheetId=sheet_id, range=f"Applications!{last_col_letter}1", valueInputOption="RAW",
+        body={"values": [["Stale Nudge Sent"]]},
+    ).execute()
+
+    rows = sheets.spreadsheets().values().get(
+        spreadsheetId=sheet_id, range="Applications!A:A"
+    ).execute().get("values", [])
+    num_data_rows = max(len(rows) - 1, 0)
+    if num_data_rows:
+        last_row = num_data_rows + 1
+        sheets.spreadsheets().values().update(
+            spreadsheetId=sheet_id, range=f"Applications!{last_col_letter}2:{last_col_letter}{last_row}",
+            valueInputOption="RAW", body={"values": [["No"]] * num_data_rows},
+        ).execute()
+    print(f"Backfilled Stale Nudge Sent = No for {num_data_rows} existing row(s).")
+
+
 def polish_applications_tab(sheets, sheet_id, applications_gid, existing_sheets):
     requests = [{
         "updateSheetProperties": {
@@ -149,10 +179,21 @@ def polish_applications_tab(sheets, sheet_id, applications_gid, existing_sheets)
     print("Applications tab polished: header frozen, Status dropdown added, rows color-coded.")
 
 
-def add_dashboard(sheets, sheet_id, sheets_by_title):
+def add_dashboard(sheets, sheet_id, sheets_by_title, existing_sheets):
     if "Dashboard" in sheets_by_title:
         print("Dashboard tab already exists -- refreshing its formulas.")
         dashboard_gid = sheets_by_title["Dashboard"]
+
+        # Delete any chart(s) already on this tab before adding a fresh one
+        # below -- addChart always creates a new object, so without this a
+        # second run would stack a duplicate pie chart on top of the first.
+        delete_requests = []
+        for sheet in existing_sheets:
+            if sheet["properties"]["sheetId"] == dashboard_gid:
+                for chart in sheet.get("charts", []):
+                    delete_requests.append({"deleteEmbeddedObject": {"objectId": chart["chartId"]}})
+        if delete_requests:
+            sheets.spreadsheets().batchUpdate(spreadsheetId=sheet_id, body={"requests": delete_requests}).execute()
     else:
         resp = sheets.spreadsheets().batchUpdate(spreadsheetId=sheet_id, body={"requests": [{
             "addSheet": {"properties": {"sheetId": DASHBOARD_SHEET_ID, "title": "Dashboard", "index": 0}}
@@ -161,6 +202,8 @@ def add_dashboard(sheets, sheet_id, sheets_by_title):
         print("Created Dashboard tab.")
 
     status_col_letter = chr(ord("A") + COLUMNS.index("Status"))
+    applied_col_letter = chr(ord("A") + COLUMNS.index("Applied Date"))
+    last_update_col_letter = chr(ord("A") + COLUMNS.index("Last Update Date"))
     values = [
         ["Job Application Dashboard"],
         [""],
@@ -172,11 +215,40 @@ def add_dashboard(sheets, sheet_id, sheets_by_title):
         ["update", f'=COUNTIF(Applications!{status_col_letter}:{status_col_letter},"update")'],
         [""],
         ["Total applications", "=COUNTA(Applications!A2:A)"],
+        [
+            "Response rate",
+            '=IFERROR(TEXT((COUNTA(Applications!A2:A)-COUNTIF(Applications!'
+            f'{status_col_letter}:{status_col_letter},"applied"))/COUNTA(Applications!A2:A),"0%"),"n/a")',
+        ],
+        [
+            "Avg days to first reply",
+            '=IFERROR(ROUND(AVERAGE(ARRAYFORMULA(IF((Applications!'
+            f'{status_col_letter}2:{status_col_letter}<>"applied")*(Applications!'
+            f'{applied_col_letter}2:{applied_col_letter}<>"")*(Applications!'
+            f'{last_update_col_letter}2:{last_update_col_letter}<>""),INT(Applications!'
+            f'{last_update_col_letter}2:{last_update_col_letter})-INT(Applications!'
+            f'{applied_col_letter}2:{applied_col_letter}),))),1),"n/a")',
+        ],
         ["Last scan", '=IFERROR(VLOOKUP("last_scan_time",_State!A:B,2,0),"never")'],
     ]
     sheets.spreadsheets().values().update(
         spreadsheetId=sheet_id, range="Dashboard!A1", valueInputOption="USER_ENTERED",
         body={"values": values},
+    ).execute()
+
+    # Applications-by-company breakdown -- placed well below the chart (see
+    # below) so its dynamic row count (grows with how many companies you've
+    # applied to) can never visually collide with it.
+    sheets.spreadsheets().values().update(
+        spreadsheetId=sheet_id, range="Dashboard!A40", valueInputOption="USER_ENTERED",
+        body={"values": [
+            ["Applications by company"],
+            [
+                '=IFERROR(QUERY(Applications!A2:C,"select A, count(A) where A is not null '
+                "group by A order by count(A) desc "
+                "label A 'Company', count(A) 'Applications'\"),\"No data yet\")"
+            ],
+        ]},
     ).execute()
 
     sheets.spreadsheets().batchUpdate(spreadsheetId=sheet_id, body={"requests": [
@@ -187,6 +259,11 @@ def add_dashboard(sheets, sheet_id, sheets_by_title):
         }},
         {"repeatCell": {
             "range": {"sheetId": dashboard_gid, "startRowIndex": 2, "endRowIndex": 3},
+            "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
+            "fields": "userEnteredFormat.textFormat",
+        }},
+        {"repeatCell": {
+            "range": {"sheetId": dashboard_gid, "startRowIndex": 39, "endRowIndex": 40},
             "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
             "fields": "userEnteredFormat.textFormat",
         }},
@@ -207,12 +284,13 @@ def add_dashboard(sheets, sheet_id, sheets_by_title):
                     },
                 },
                 "position": {"overlayPosition": {
-                    "anchorCell": {"sheetId": dashboard_gid, "rowIndex": 11, "columnIndex": 0},
+                    "anchorCell": {"sheetId": dashboard_gid, "rowIndex": 13, "columnIndex": 0},
                 }},
             }
         }},
     ]}).execute()
-    print("Dashboard tab populated with status counts and a pie chart.")
+    print("Dashboard tab populated with status counts, response rate, avg days to "
+          "first reply, applications-by-company breakdown, and a pie chart.")
 
 
 def main() -> None:
@@ -229,8 +307,16 @@ def main() -> None:
     ).execute().get("values", [[]])[0]
 
     migrate_schema(sheets, sheet_id, applications_gid, header_row)
+
+    # Re-fetch: migrate_schema may have just inserted columns, so the header
+    # row this migration checks against needs to reflect that.
+    header_row = sheets.spreadsheets().values().get(
+        spreadsheetId=sheet_id, range="Applications!1:1"
+    ).execute().get("values", [[]])[0]
+    migrate_stale_nudge_column(sheets, sheet_id, header_row)
+
     polish_applications_tab(sheets, sheet_id, applications_gid, spreadsheet["sheets"])
-    add_dashboard(sheets, sheet_id, sheets_by_title)
+    add_dashboard(sheets, sheet_id, sheets_by_title, spreadsheet["sheets"])
 
     print(f"\nDone. View it at: {config.GOOGLE_SHEET_URL}")
 
