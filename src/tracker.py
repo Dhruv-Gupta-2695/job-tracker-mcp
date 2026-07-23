@@ -71,20 +71,24 @@ def _find_recent_row_by_sender(sender: str, applied_at: datetime) -> Optional[in
     return None
 
 
-def add_application(company: str, position: str, sender: str, thread_id: str, applied_at: datetime) -> None:
+def add_application(company: str, position: str, sender: str, thread_id: str, applied_at: datetime) -> bool:
     """Add a new row for a freshly detected application confirmation email.
     No-ops if the thread is already tracked, or if the same sender already
-    has a row within DEDUPE_WINDOW_DAYS (see note above)."""
+    has a row within DEDUPE_WINDOW_DAYS (see note above). Returns True if a
+    row was actually added, False if it was skipped as a duplicate --
+    callers use this to report accurate counts rather than counting every
+    detected confirmation as "added" even when it was deduped away."""
     row_num, _ = _find_row_by_thread_id(thread_id)
     if row_num is not None:
-        return
+        return False
     if _find_recent_row_by_sender(sender, applied_at) is not None:
-        return
+        return False
 
     sheets_client.append_row(sheets_client.APPLICATIONS_RANGE, [
         company, position, "applied", applied_at.strftime("%Y-%m-%d"),
         sender, thread_id, "", "", "No",
     ])
+    return True
 
 
 def update_application(thread_id: str, status: str, summary: str, updated_at: datetime, telegram_sent: bool) -> None:

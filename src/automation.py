@@ -42,14 +42,15 @@ def scan_new_applications() -> list[dict]:
 
         result = classifier.classify_new_message(msg)
         if result.is_application_confirmation:
-            tracker.add_application(
+            was_added = tracker.add_application(
                 company=result.company,
                 position=result.position,
                 sender=msg.sender,
                 thread_id=msg.thread_id,
                 applied_at=msg.received_at,
             )
-            added.append({"company": result.company, "position": result.position})
+            if was_added:
+                added.append({"company": result.company, "position": result.position})
 
     tracker.add_seen_message_ids(new_ids)
     tracker.set_last_scan_time(datetime.now())
