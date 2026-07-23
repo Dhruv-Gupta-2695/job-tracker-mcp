@@ -1,0 +1,46 @@
+"""
+Central configuration loaded from environment variables (see .env.example).
+
+Nothing in this file should contain real secrets. Copy .env.example to .env
+and fill in your own values; python-dotenv loads it automatically.
+"""
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env from the project root regardless of current working directory
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_ROOT / ".env")
+
+
+def _get(name: str, default: str | None = None, required: bool = False) -> str:
+    value = os.environ.get(name, default)
+    if required and not value:
+        raise RuntimeError(
+            f"Missing required environment variable: {name}. "
+            f"Copy .env.example to .env and fill it in."
+        )
+    return value
+
+
+# --- Google (Gmail + Sheets share one login/token pair) ---
+GMAIL_CREDENTIALS_PATH = _get("GMAIL_CREDENTIALS_PATH", str(PROJECT_ROOT / "credentials.json"))
+GMAIL_TOKEN_PATH = _get("GMAIL_TOKEN_PATH", str(PROJECT_ROOT / "token.json"))
+GOOGLE_SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/spreadsheets",
+]
+
+# --- Telegram ---
+TELEGRAM_BOT_TOKEN = _get("TELEGRAM_BOT_TOKEN")  # from @BotFather
+TELEGRAM_CHAT_ID = _get("TELEGRAM_CHAT_ID")  # your own chat id, see get_telegram_chat_id.py
+
+# --- Tracker (Google Sheet -- see create_google_sheet.py) ---
+GOOGLE_SHEET_ID = _get("GOOGLE_SHEET_ID")
+GOOGLE_SHEET_URL = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/edit" if GOOGLE_SHEET_ID else ""
+
+# --- Polling ---
+POLL_INTERVAL_MINUTES = int(_get("POLL_INTERVAL_MINUTES", "15"))
+
+# How many days back to look the very first time the tool runs
+INITIAL_LOOKBACK_DAYS = int(_get("INITIAL_LOOKBACK_DAYS", "30"))

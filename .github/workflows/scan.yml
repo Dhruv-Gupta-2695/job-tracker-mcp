@@ -1,0 +1,39 @@
+name: Job Tracker Scan
+
+on:
+  schedule:
+    # GitHub Actions schedules run in UTC. These correspond to 12:00pm and
+    # 7:00pm IST (UTC+5:30). Adjust if you're in a different timezone.
+    - cron: "30 6 * * *"   # 12:00 IST
+    - cron: "30 13 * * *"  # 19:00 IST
+  workflow_dispatch: {}  # lets you trigger a run manually from the Actions tab, for testing
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write Google credentials from secrets
+        run: |
+          echo "$GMAIL_CREDENTIALS_JSON" > credentials.json
+          echo "$GMAIL_TOKEN_JSON" > token.json
+        env:
+          GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
+          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
+
+      - name: Run scan
+        run: python3 run_once.py
+        env:
+          GMAIL_CREDENTIALS_PATH: ./credentials.json
+          GMAIL_TOKEN_PATH: ./token.json
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
