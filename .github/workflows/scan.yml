@@ -14,6 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Show exact commit being run (diagnostic)
+        run: |
+          echo "Running commit: $GITHUB_SHA"
+          git log -1 --oneline
+          grep -n "fromtimestamp\|fromisoformat" src/tracker.py || true
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
