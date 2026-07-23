@@ -22,6 +22,12 @@ COLUMNS = [
     "Last Update Summary", "Telegram Sent",
 ]
 
+# Derived from COLUMNS rather than hardcoded, so adding/removing a column
+# here can never again silently desync from the range actually read/written
+# (this exact class of bug -- a stale "A:I" range left over after adding
+# two more columns -- broke a live scan once already).
+APPLICATIONS_RANGE = f"Applications!A:{chr(ord('A') + len(COLUMNS) - 1)}"
+
 # Google Sheets caps cells at 50,000 characters -- stay comfortably under
 # that for full email bodies rather than truncating to a short snippet.
 MAX_CELL_CHARS = 45000
@@ -42,7 +48,7 @@ MAX_SEEN_IDS = 2000
 def _get_rows() -> list[list[str]]:
     """All data rows from the Applications tab (header excluded), each
     padded out to len(COLUMNS) so index lookups never go out of range."""
-    values = sheets_client.get_values(sheets_client.APPLICATIONS_RANGE)
+    values = sheets_client.get_values(APPLICATIONS_RANGE)
     rows = values[1:] if values else []
     return [row + [""] * (len(COLUMNS) - len(row)) for row in rows]
 
@@ -96,7 +102,7 @@ def add_application(
     if _find_recent_row_by_sender(sender, applied_at) is not None:
         return False
 
-    sheets_client.append_row(sheets_client.APPLICATIONS_RANGE, [
+    sheets_client.append_row(APPLICATIONS_RANGE, [
         company, position, "applied", applied_at.strftime("%Y-%m-%d"),
         sender, thread_id, gmail_client.thread_url(thread_id),
         description[:MAX_CELL_CHARS], "", "", "No",
@@ -137,26 +143,45 @@ def _load_state() -> dict:
 
 
 def _save_state_value(key: str, value: str) -> None:
+    # RAW input mode: without this, Sheets "helpfully" auto-detects
+    # date-shaped strings and reformats them (e.g. dropping zero-padding,
+    # swapping the separator), which then fails to parse back on the next
+    # run. RAW stores exactly the string given, no reinterpretation.
     values = sheets_client.get_values(sheets_client.STATE_RANGE)
     for i, row in enumerate(values):
         if row and row[0] == key:
-            sheets_client.update_row("_State", i + 1, [key, value])
+            sheets_client.update_row("_State", i + 1, [key, value], value_input_option="RAW")
             return
-    sheets_client.append_row(sheets_client.STATE_RANGE, [key, value])
+    sheets_client.append_row(sheets_client.STATE_RANGE, [key, value], value_input_option="RAW")
 
 
 def get_last_scan_time() -> Optional[datetime]:
+    """Stored as a plain Unix timestamp rather than an ISO string -- a
+    second layer of defense against Sheets reformatting it, on top of the
+    RAW write above. Any unexpected/corrupted value falls back to None
+    (triggering a full INITIAL_LOOKBACK_DAYS rescan) rather than crashing
+    the whole scan."""
     ts = _load_state().get("last_scan_time")
-    return datetime.fromisoformat(ts) if ts else None
+    if not ts:
+        return None
+    try:
+        return datetime.fromtimestamp(float(ts))
+    except (ValueError, TypeError):
+        return None
 
 
 def set_last_scan_time(dt: datetime) -> None:
-    _save_state_value("last_scan_time", dt.isoformat())
+    _save_state_value("last_scan_time", str(dt.timestamp()))
 
 
 def get_last_seen_message_ids() -> set[str]:
     raw = _load_state().get("seen_message_ids")
-    return set(json.loads(raw)) if raw else set()
+    if not raw:
+        return set()
+    try:
+        return set(json.loads(raw))
+    except (ValueError, TypeError):
+        return set()
 
 
 def add_seen_message_ids(ids: set[str]) -> None:

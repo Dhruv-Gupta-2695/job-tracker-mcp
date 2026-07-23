@@ -10,7 +10,6 @@ from googleapiclient.discovery import build
 
 from . import config, google_auth
 
-APPLICATIONS_RANGE = "Applications!A:I"
 STATE_RANGE = "_State!A:B"
 
 
@@ -26,18 +25,24 @@ def get_values(range_name: str) -> list[list[str]]:
     return resp.get("values", [])
 
 
-def append_row(range_name: str, row: list) -> None:
+def append_row(range_name: str, row: list, value_input_option: str = "USER_ENTERED") -> None:
+    """value_input_option="RAW" stores exactly the string given, with no
+    date/number auto-detection -- required for anything you need to parse
+    back byte-exact later (e.g. tracker.py's _State bookkeeping). Leave the
+    default USER_ENTERED for human-facing data like the Applications tab,
+    where e.g. auto-formatting the Gmail Link as a clickable link is a
+    feature, not a bug."""
     service = get_sheets_service()
     service.spreadsheets().values().append(
         spreadsheetId=config.GOOGLE_SHEET_ID,
         range=range_name,
-        valueInputOption="USER_ENTERED",
+        valueInputOption=value_input_option,
         insertDataOption="INSERT_ROWS",
         body={"values": [row]},
     ).execute()
 
 
-def update_row(sheet_name: str, row_number: int, row: list) -> None:
+def update_row(sheet_name: str, row_number: int, row: list, value_input_option: str = "USER_ENTERED") -> None:
     """row_number is 1-indexed exactly as it appears in the sheet (so row 1
     is the header row on the Applications tab, but there is no header on
     the _State tab -- see tracker.py for how each range is used)."""
@@ -46,6 +51,6 @@ def update_row(sheet_name: str, row_number: int, row: list) -> None:
     service.spreadsheets().values().update(
         spreadsheetId=config.GOOGLE_SHEET_ID,
         range=f"{sheet_name}!A{row_number}:{end_col}{row_number}",
-        valueInputOption="USER_ENTERED",
+        valueInputOption=value_input_option,
         body={"values": [row]},
     ).execute()
