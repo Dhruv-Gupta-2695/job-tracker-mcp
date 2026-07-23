@@ -48,6 +48,7 @@ def scan_new_applications() -> list[dict]:
                 sender=msg.sender,
                 thread_id=msg.thread_id,
                 applied_at=msg.received_at,
+                description=msg.body or msg.snippet,
             )
             if was_added:
                 added.append({"company": result.company, "position": result.position})
@@ -83,7 +84,7 @@ def check_thread_updates() -> list[dict]:
                     company=app["Company"],
                     position=app["Position"],
                     status=result.status,
-                    summary=msg.snippet or msg.body,
+                    summary=msg.body or msg.snippet,
                 )
                 telegram_sent = True
             except Exception as exc:  # noqa: BLE001 - surfaced to caller/log
@@ -92,7 +93,7 @@ def check_thread_updates() -> list[dict]:
             tracker.update_application(
                 thread_id=thread_id,
                 status=result.status,
-                summary=msg.snippet or msg.body,
+                summary=msg.body or msg.snippet,
                 updated_at=msg.received_at,
                 telegram_sent=telegram_sent,
             )

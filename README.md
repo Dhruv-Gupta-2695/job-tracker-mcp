@@ -24,6 +24,7 @@ job-tracker-mcp/
   run_once.py                single scan-and-check pass -- used by both cron and GitHub Actions
   create_google_sheet.py     one-time: creates the Sheet and prints its ID
   migrate_existing_data.py   one-time: ports old job_applications.xlsx rows into the Sheet
+  upgrade_sheet.py           one-time (safe to re-run): dashboard tab, color-coding, dropdown
   get_telegram_chat_id.py    one-time: finds your Telegram chat ID
   test_telegram.py           sends a one-off test message, for sanity-checking setup
   requirements.txt
@@ -98,6 +99,15 @@ port its rows over:
 ```bash
 python3 migrate_existing_data.py
 ```
+
+Then polish it -- adds a Dashboard tab (status counts + pie chart), freezes
+the header row, color-codes rows by status, and adds a dropdown on the
+Status column. Safe to re-run any time (e.g. after a schema change):
+```bash
+python3 upgrade_sheet.py
+```
+If you have older rows from before "Gmail Link"/"Description" columns
+existed, this also migrates the sheet and backfills both for you.
 
 ### 4. Telegram bot
 
@@ -215,6 +225,12 @@ the `GMAIL_TOKEN_JSON` secret on GitHub with the new `token.json` contents.
   follow-ups), it's treated as the same application rather than a new row.
   Tune `DEDUPE_WINDOW_DAYS` in `tracker.py` if this ever merges two
   genuinely different applications to the same company.
+- **Gmail Link and Description**: every row has a "Gmail Link" column that
+  opens the whole email thread directly (original confirmation plus every
+  reply), and a "Description" column with the full body of the confirmation
+  email -- not a truncated snippet. "Last Update Summary" likewise holds the
+  full body of whatever reply triggered the update, so you never have to
+  guess what a short preview was cut off from.
 
 ## Notes and limitations
 

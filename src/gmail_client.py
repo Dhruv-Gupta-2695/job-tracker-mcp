@@ -66,6 +66,12 @@ def _header(headers: list[dict], name: str) -> str:
     return ""
 
 
+def thread_url(thread_id: str) -> str:
+    """A direct Gmail web link that opens the whole thread (original
+    confirmation email plus every reply) in the browser."""
+    return f"https://mail.google.com/mail/u/0/#all/{thread_id}"
+
+
 def fetch_messages_since(service, after: datetime, extra_query: str = "") -> list[EmailMessage]:
     """List + fetch every message received after `after`. `extra_query` lets
     callers narrow the Gmail search (e.g. restrict to a thread)."""

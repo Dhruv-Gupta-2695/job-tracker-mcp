@@ -14,12 +14,17 @@ import json
 from datetime import datetime
 from typing import Optional
 
-from . import sheets_client
+from . import gmail_client, sheets_client
 
 COLUMNS = [
     "Company", "Position", "Status", "Applied Date", "Sender",
-    "Thread ID", "Last Update Date", "Last Update Summary", "Telegram Sent",
+    "Thread ID", "Gmail Link", "Description", "Last Update Date",
+    "Last Update Summary", "Telegram Sent",
 ]
+
+# Google Sheets caps cells at 50,000 characters -- stay comfortably under
+# that for full email bodies rather than truncating to a short snippet.
+MAX_CELL_CHARS = 45000
 
 # If the same sender emails again within this many days but in a different
 # thread (common for "please verify your identity" or portal-invite
@@ -71,13 +76,20 @@ def _find_recent_row_by_sender(sender: str, applied_at: datetime) -> Optional[in
     return None
 
 
-def add_application(company: str, position: str, sender: str, thread_id: str, applied_at: datetime) -> bool:
+def add_application(
+    company: str, position: str, sender: str, thread_id: str, applied_at: datetime,
+    description: str = "",
+) -> bool:
     """Add a new row for a freshly detected application confirmation email.
     No-ops if the thread is already tracked, or if the same sender already
     has a row within DEDUPE_WINDOW_DAYS (see note above). Returns True if a
     row was actually added, False if it was skipped as a duplicate --
     callers use this to report accurate counts rather than counting every
-    detected confirmation as "added" even when it was deduped away."""
+    detected confirmation as "added" even when it was deduped away.
+
+    `description` is the full body of the confirmation email -- a "Gmail
+    Link" back to the whole thread is derived from thread_id automatically,
+    so you can always open the original email (and every reply) directly."""
     row_num, _ = _find_row_by_thread_id(thread_id)
     if row_num is not None:
         return False
@@ -86,20 +98,24 @@ def add_application(company: str, position: str, sender: str, thread_id: str, ap
 
     sheets_client.append_row(sheets_client.APPLICATIONS_RANGE, [
         company, position, "applied", applied_at.strftime("%Y-%m-%d"),
-        sender, thread_id, "", "", "No",
+        sender, thread_id, gmail_client.thread_url(thread_id),
+        description[:MAX_CELL_CHARS], "", "", "No",
     ])
     return True
 
 
-def update_application(thread_id: str, status: str, summary: str, updated_at: datetime, telegram_sent: bool) -> None:
-    """Update the row for an existing thread with a new status/summary."""
+def update_application(
+    thread_id: str, status: str, summary: str, updated_at: datetime, telegram_sent: bool,
+) -> None:
+    """Update the row for an existing thread with a new status and the full
+    body of whatever reply triggered it (not just a short snippet)."""
     row_num, row = _find_row_by_thread_id(thread_id)
     if row_num is None:
         return
 
     row[COLUMNS.index("Status")] = status
     row[COLUMNS.index("Last Update Date")] = updated_at.strftime("%Y-%m-%d %H:%M")
-    row[COLUMNS.index("Last Update Summary")] = summary[:500]
+    row[COLUMNS.index("Last Update Summary")] = summary[:MAX_CELL_CHARS]
     row[COLUMNS.index("Telegram Sent")] = "Yes" if telegram_sent else "No"
     sheets_client.update_row("Applications", row_num, row)
 
