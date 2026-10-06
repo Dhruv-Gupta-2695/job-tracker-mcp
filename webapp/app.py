@@ -24,6 +24,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile  # noqa: E402
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse  # noqa: E402
 from fastapi.security import HTTPBasic, HTTPBasicCredentials  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from src import (  # noqa: E402
@@ -33,6 +34,26 @@ from src import (  # noqa: E402
 
 app = FastAPI(title="Job Tracker")
 security = HTTPBasic()
+
+# Icons only -- genuinely public/static, no auth needed, and the service
+# worker precaches them directly, which is simplest without any auth
+# dance. manifest.json and sw.js get their own routes below (sw.js in
+# particular needs to be served from "/" for its scope to cover the whole
+# app, not just /static/).
+app.mount("/static/icons", StaticFiles(directory=PROJECT_ROOT / "webapp" / "static" / "icons"), name="icons")
+
+
+@app.get("/manifest.json", include_in_schema=False)
+def manifest():
+    return FileResponse(PROJECT_ROOT / "webapp" / "static" / "manifest.json", media_type="application/manifest+json")
+
+
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    # Served from "/" (not /static/) so its default scope covers the whole
+    # app -- a service worker's scope is limited to its own path and below
+    # unless the Service-Worker-Allowed header says otherwise.
+    return FileResponse(PROJECT_ROOT / "webapp" / "static" / "sw.js", media_type="application/javascript")
 
 
 def require_auth(credentials: HTTPBasicCredentials = Depends(security)) -> None:
