@@ -45,12 +45,32 @@ DEDUPE_WINDOW_DAYS = 14
 MAX_SEEN_IDS = 2000
 
 
+# Process-lifetime cache for the Applications tab: without this, a scan
+# that processes N new messages in one run was issuing up to 2N separate
+# Sheets reads (one or two per add_application() dedup check), which blew
+# past Google's "Read requests per minute per user" quota (60/min) the
+# first time a real backlog hit it. Each GitHub Actions run is a fresh
+# process that exits when done, so a simple module-level cache -- read
+# once, reused for the rest of the run, invalidated after any write -- is
+# safe and cannot serve stale data across separate runs.
+_rows_cache: Optional[list[list[str]]] = None
+
+
+def _invalidate_rows_cache() -> None:
+    global _rows_cache
+    _rows_cache = None
+
+
 def _get_rows() -> list[list[str]]:
     """All data rows from the Applications tab (header excluded), each
-    padded out to len(COLUMNS) so index lookups never go out of range."""
-    values = sheets_client.get_values(APPLICATIONS_RANGE)
-    rows = values[1:] if values else []
-    return [row + [""] * (len(COLUMNS) - len(row)) for row in rows]
+    padded out to len(COLUMNS) so index lookups never go out of range.
+    Cached for the lifetime of the process -- see _rows_cache above."""
+    global _rows_cache
+    if _rows_cache is None:
+        values = sheets_client.get_values(APPLICATIONS_RANGE)
+        rows = values[1:] if values else []
+        _rows_cache = [row + [""] * (len(COLUMNS) - len(row)) for row in rows]
+    return _rows_cache
 
 
 def _find_row_by_thread_id(thread_id: str) -> tuple[Optional[int], Optional[list]]:
@@ -107,6 +127,7 @@ def add_application(
         sender, thread_id, gmail_client.thread_url(thread_id),
         description[:MAX_CELL_CHARS], "", "", "No", "No",
     ])
+    _invalidate_rows_cache()  # so the next dedup check in this same run sees the row we just added
     return True
 
 
@@ -124,6 +145,7 @@ def update_application(
     row[COLUMNS.index("Last Update Summary")] = summary[:MAX_CELL_CHARS]
     row[COLUMNS.index("Telegram Sent")] = "Yes" if telegram_sent else "No"
     sheets_client.update_row("Applications", row_num, row)
+    _invalidate_rows_cache()
 
 
 def get_stale_applications(threshold_days: int) -> list[dict]:
@@ -158,13 +180,17 @@ def get_stale_applications(threshold_days: int) -> list[dict]:
 def mark_stale_nudge_sent(row_num: int) -> None:
     """Flip "Stale Nudge Sent" to Yes for one row (by 1-indexed sheet row,
     as returned in get_stale_applications()'s "_row" field) so the same
-    application doesn't get nudged again on the next scan."""
-    values = sheets_client.get_values(f"Applications!A{row_num}:{chr(ord('A') + len(COLUMNS) - 1)}{row_num}")
-    if not values:
+    application doesn't get nudged again on the next scan. Reuses the
+    cached rows (row_num - 2 is its index in _get_rows()) instead of
+    issuing its own fresh read -- see _rows_cache above."""
+    rows = _get_rows()
+    index = row_num - 2
+    if index < 0 or index >= len(rows):
         return
-    row = values[0] + [""] * (len(COLUMNS) - len(values[0]))
+    row = rows[index]
     row[COLUMNS.index("Stale Nudge Sent")] = "Yes"
     sheets_client.update_row("Applications", row_num, row)
+    _invalidate_rows_cache()
 
 
 def get_tracked_thread_ids() -> set[str]:
@@ -178,9 +204,22 @@ def list_applications() -> list[dict]:
 
 # --- _State tab: replaces the old local state.json ---
 
+# Same process-lifetime caching as _rows_cache above, and for the same
+# reason: _load_state()/_save_state_value() were each issuing their own
+# fresh read of the whole _State tab, several times per run, adding to the
+# same per-minute read quota that tripped on the Applications tab.
+_state_rows_cache: Optional[list[list[str]]] = None
+
+
+def _get_state_rows() -> list[list[str]]:
+    global _state_rows_cache
+    if _state_rows_cache is None:
+        _state_rows_cache = sheets_client.get_values(sheets_client.STATE_RANGE)
+    return _state_rows_cache
+
+
 def _load_state() -> dict:
-    values = sheets_client.get_values(sheets_client.STATE_RANGE)
-    return {row[0]: row[1] for row in values if len(row) >= 2}
+    return {row[0]: row[1] for row in _get_state_rows() if len(row) >= 2}
 
 
 def _save_state_value(key: str, value: str) -> None:
@@ -188,12 +227,15 @@ def _save_state_value(key: str, value: str) -> None:
     # date-shaped strings and reformats them (e.g. dropping zero-padding,
     # swapping the separator), which then fails to parse back on the next
     # run. RAW stores exactly the string given, no reinterpretation.
-    values = sheets_client.get_values(sheets_client.STATE_RANGE)
-    for i, row in enumerate(values):
+    global _state_rows_cache
+    rows = _get_state_rows()
+    for i, row in enumerate(rows):
         if row and row[0] == key:
             sheets_client.update_row("_State", i + 1, [key, value], value_input_option="RAW")
+            _state_rows_cache = None
             return
     sheets_client.append_row(sheets_client.STATE_RANGE, [key, value], value_input_option="RAW")
+    _state_rows_cache = None
 
 
 def get_last_scan_time() -> Optional[datetime]:
