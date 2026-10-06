@@ -336,13 +336,27 @@ this if it bothers you).
   one Sheet this project created.
 - Telegram messages are sent as free-form text through your own bot -- no
   templates, no approval queue, and no expiring session to keep alive.
-- **Gmail login expires roughly every 7 days.** Since the Google Cloud
-  project stays in "Testing" publishing status (verifying it for
-  production is unnecessary overhead for a personal tool), Google expires
-  the cached refresh token on that schedule -- this applies the same way
-  whether you're running locally or on GitHub Actions. When it happens,
-  every runner detects it specifically and sends you a Telegram message
-  telling you exactly what to do (re-run `run_once.py` locally, and update
-  the `GMAIL_TOKEN_JSON` secret if you're on GitHub Actions). Any other
-  unexpected scan failure also sends a shorter "check daemon.log" alert the
-  same way.
+- **Gmail login expires roughly every 7 days if your Google Cloud project
+  is still in "Testing" publishing status.** This is a hard Google policy:
+  any app left in Testing gets its refresh tokens killed after 7 days, no
+  exceptions. **Fix it for good** by publishing the app instead of staying
+  in Testing:
+  1. [Google Cloud Console](https://console.cloud.google.com/) -> APIs &
+     Services -> OAuth consent screen.
+  2. Click **Publish App** (moves status from "Testing" to "In production").
+  3. Confirm the warning dialog -- for personal/sensitive scopes like
+     Gmail, Google does NOT require the full verification review/security
+     audit unless you're serving the public at scale. You'll just see an
+     "unverified app" warning the next time you log in (click Advanced ->
+     Go to [app name] (unsafe) -- this is your own app, so that's fine);
+     refresh tokens then stop expiring on the 7-day schedule entirely.
+  4. Re-auth one more time after publishing (delete `token.json`, run
+     `python3 run_once.py`) so the new token is issued under the new
+     status, then update `GMAIL_TOKEN_JSON` wherever it's stored (GitHub
+     Actions secret, Render env var).
+
+  If you'd rather not publish and just live with the 7-day cycle: when it
+  happens, every runner detects it specifically and sends you a Telegram
+  message telling you exactly what to do (re-run `run_once.py` locally,
+  update `GMAIL_TOKEN_JSON` on GitHub Actions/Render). Any other unexpected
+  scan failure also sends a shorter "check daemon.log" alert the same way.
