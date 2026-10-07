@@ -219,15 +219,17 @@ run one without the other.
 
 ### One-time setup
 
-1. Get an API key at [console.anthropic.com](https://console.anthropic.com)
-   -- this is separate billing from any claude.ai/Claude Pro/Max
-   subscription, they're two different products. With the default Haiku
-   model, generation costs roughly $0.01 per tailored CV and $0.007 per
-   cover letter, so a few dollars of credit covers hundreds of each. Add it
-   as `ANTHROPIC_API_KEY`.
+1. Get a free API key at [aistudio.google.com](https://aistudio.google.com)
+   -- no credit card needed. The default model (a Gemini Flash model) runs
+   on the free tier: 1,500 requests/day, far more than this will ever use
+   even applying to 30-50 jobs/day (60-100 calls/day). One tradeoff: on the
+   free tier, Google's terms allow using your requests to improve their
+   products (this doesn't apply if you later move to a paid Gemini plan --
+   at this volume that would run roughly $6-11/month). Add the key as
+   `GEMINI_API_KEY`.
 2. Pick a `WEBAPP_PASSWORD`. This repo is public and a free host gives your
    app a public URL, so without a password anyone who finds that URL could
-   read your CV, generate documents on your Anthropic bill, and see your
+   read your CV, generate documents against your Gemini quota, and see your
    application history. There's no other login system -- just this one
    shared password (HTTP Basic Auth), and it's required: the app refuses to
    serve any request if it's unset, rather than quietly running open.

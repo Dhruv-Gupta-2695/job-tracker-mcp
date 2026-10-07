@@ -59,13 +59,14 @@ INITIAL_LOOKBACK_DAYS = int(_get("INITIAL_LOOKBACK_DAYS", "30"))
 STALE_NUDGE_DAYS = int(_get("STALE_NUDGE_DAYS", "21"))
 
 # --- webapp/ (CV tailoring, cover letters, live UI) ---
-# From console.anthropic.com -- separate billing from any claude.ai
-# subscription. Required only to run webapp/, not the Gmail-scanning side.
-ANTHROPIC_API_KEY = _get("ANTHROPIC_API_KEY")
-# Cheapest model by default (see README's cost breakdown); bump to a Sonnet
-# model string here any time without touching code, once you've tested and
-# want the quality upgrade.
-AI_MODEL = _get("AI_MODEL", "claude-haiku-4-5-20251001")
+# From aistudio.google.com -- the free tier needs no credit card. Required
+# only to run webapp/, not the Gmail-scanning side.
+GEMINI_API_KEY = _get("GEMINI_API_KEY")
+# A Flash model by default -- that's what the free tier (no billing
+# account needed) covers. Bump to a Pro model string here any time if you
+# move to a paid plan and want the quality upgrade (see README's cost
+# breakdown for what that would cost at your volume).
+AI_MODEL = _get("AI_MODEL", "gemini-flash-latest")
 
 # Fine-grained GitHub Personal Access Token (repo scope: Actions
 # read/write) -- powers the "run scan now" button in the webapp UI. Leave

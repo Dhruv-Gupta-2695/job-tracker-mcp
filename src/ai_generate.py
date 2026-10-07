@@ -1,29 +1,29 @@
 """
-Calls the Anthropic API to tailor a CV and draft a matching cover letter.
+Calls the Gemini API to tailor a CV and draft a matching cover letter.
 
-Uses config.ANTHROPIC_API_KEY (from console.anthropic.com -- separate
-billing from any claude.ai subscription, see README's cost breakdown) and
-config.AI_MODEL (Haiku by default; bump to a Sonnet model string in .env
-any time, without touching code, once you've tested and want the quality
-upgrade over cost).
+Uses config.GEMINI_API_KEY (from aistudio.google.com -- the free tier needs
+no credit card and no billing account, see README's cost breakdown) and
+config.AI_MODEL (a Flash model by default, which is what the free tier
+covers; bump to a Pro model string in .env any time if you move to a paid
+plan and want the quality upgrade).
 """
 from __future__ import annotations
 
-from anthropic import Anthropic
+from google import genai
 
 from . import config, prompts
 
 MAX_OUTPUT_TOKENS = 2000
 
 
-def _client() -> Anthropic:
-    if not config.ANTHROPIC_API_KEY:
+def _client() -> genai.Client:
+    if not config.GEMINI_API_KEY:
         raise RuntimeError(
-            "ANTHROPIC_API_KEY is not set. Get one at console.anthropic.com "
-            "(separate billing from any claude.ai/Claude Pro/Max subscription) "
-            "and add it to your environment."
+            "GEMINI_API_KEY is not set. Get one for free at aistudio.google.com "
+            "(no credit card needed for the free tier) and add it to your "
+            "environment."
         )
-    return Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    return genai.Client(api_key=config.GEMINI_API_KEY)
 
 
 def _generate(prompt_name: str, core_cv: str, job_description: str) -> str:
@@ -46,12 +46,12 @@ def _generate(prompt_name: str, core_cv: str, job_description: str) -> str:
         )
     prompt_text = template.format(core_cv=core_cv, job_description=job_description)
 
-    response = client.messages.create(
+    response = client.models.generate_content(
         model=config.AI_MODEL,
-        max_tokens=MAX_OUTPUT_TOKENS,
-        messages=[{"role": "user", "content": prompt_text}],
+        contents=prompt_text,
+        config=genai.types.GenerateContentConfig(max_output_tokens=MAX_OUTPUT_TOKENS),
     )
-    return "".join(block.text for block in response.content if block.type == "text").strip()
+    return (response.text or "").strip()
 
 
 def tailor_cv(core_cv: str, job_description: str) -> str:

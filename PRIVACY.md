@@ -20,10 +20,13 @@ Using your own Google account, this tool reads and writes only:
 ## Where your data goes
 
 Everything stays within your own Google account (Gmail, Sheets, Drive) and,
-if you use the optional AI features, is sent to Anthropic's API
-(console.anthropic.com) using your own API key, solely to generate tailored
-CVs and cover letters on your request. No data is sent anywhere else, and
-no data is retained by the developer of this tool.
+if you use the optional AI features, your core CV and the job descriptions
+you paste are sent to Google's Gemini API using your own API key, solely to
+generate tailored CVs and cover letters on your request. No data is sent
+anywhere else, and no data is retained by the developer of this tool. If
+you're using Gemini's free tier, Google's own terms allow that data to be
+used to improve their products (this does not apply if you're on a paid
+Gemini plan instead) -- see Google's AI/API terms for the current details.
 
 ## Who this applies to
 

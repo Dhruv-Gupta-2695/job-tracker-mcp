@@ -24,10 +24,10 @@ services:
         sync: false
       - key: GOOGLE_SHEET_ID
         sync: false
-      - key: ANTHROPIC_API_KEY
+      - key: GEMINI_API_KEY
         sync: false
       - key: AI_MODEL
-        value: claude-haiku-4-5-20251001
+        value: gemini-flash-latest
       - key: WEBAPP_PASSWORD
         sync: false
       - key: CANDIDATE_NAME
