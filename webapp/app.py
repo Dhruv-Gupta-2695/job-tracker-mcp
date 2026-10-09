@@ -217,12 +217,20 @@ def update_prompt(req: PromptUpdate):
 # --- Manual scan trigger ---
 
 @app.post("/api/trigger-scan", dependencies=[Depends(require_auth)])
-def trigger_scan():
+def trigger_scan(only_if_stale_minutes: float | None = None):
+    """Fires the scan workflow. With ?only_if_stale_minutes=N it becomes a
+    safe backup trigger: it skips (ok=True, triggered=False) if any run was
+    already created in the last N minutes, so an external scheduler can ping
+    this a little after the primary one without causing a double run."""
     try:
-        github_trigger.trigger_scan()
+        if only_if_stale_minutes is not None:
+            triggered = github_trigger.trigger_scan_if_stale(only_if_stale_minutes)
+        else:
+            github_trigger.trigger_scan()
+            triggered = True
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True}
+    return {"ok": True, "triggered": triggered}
 
 
 @app.get("/api/config", dependencies=[Depends(require_auth)])
