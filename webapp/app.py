@@ -229,6 +229,9 @@ def trigger_scan(only_if_stale_minutes: float | None = None):
             github_trigger.trigger_scan()
             triggered = True
     except RuntimeError as exc:
+        # Log the reason too, so it shows up in Render's logs -- the 400
+        # response body alone isn't visible from cron-job.org's test run.
+        print(f"[trigger-scan] failed: {exc}", flush=True)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, "triggered": triggered}
 

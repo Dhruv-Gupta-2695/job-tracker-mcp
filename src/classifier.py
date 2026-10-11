@@ -60,6 +60,24 @@ OFFER_PHRASES = [
 
 STATUS_ORDER = ["applied", "interview", "offer", "rejected"]
 
+# Mid-process progress emails ("you're through to the assignment stage").
+# These are updates on an application, not a fresh application receipt, so
+# they must not create a new "applied" row on their own.
+STAGE_PROGRESS_PHRASES = [
+    "you're through to", "you are through to", "you've been shortlisted",
+    "you have been shortlisted", "shortlisted for", "advance to the next",
+    "moved to the next", "assignment stage", "next round",
+]
+
+# Subjects too generic to be a job title -- better to say "Unknown position"
+# than to store these as if they were one.
+_GENERIC_SUBJECTS = {
+    "job application", "application", "your application", "application received",
+    "application confirmation", "thank you for applying", "thanks for applying",
+}
+
+UNKNOWN_POSITION = "Unknown position"
+
 
 @dataclass
 class Classification:
@@ -82,6 +100,20 @@ def _sender_domain(sender: str) -> str:
     return match.group(1).lower() if match else ""
 
 
+def _looks_like_placeholder(text: str) -> bool:
+    """Unfilled template text such as "[Position Name]" or "{{role}}"."""
+    return bool(re.search(r"[\[\]{}<>]", text))
+
+
+def _company_from_subject(subject: str) -> str:
+    """Job-board relays (Wellfound etc.) put the real employer in the subject
+    ("Drona Pay was accepted!") while the sender is a recruiter's name."""
+    match = re.match(r"^\s*(.+?)\s+was accepted!?\s*$", subject, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
 def _guess_company(msg: EmailMessage) -> str:
     domain = _sender_domain(msg.sender)
     name_match = re.match(r'"?([^"<]+)"?\s*<', msg.sender)
@@ -92,7 +124,16 @@ def _guess_company(msg: EmailMessage) -> str:
     # as a company name, so treat it the same as having no display name.
     display_name_is_email = "@" in display_name
 
-    if display_name and not display_name_is_email:
+    # "Satish Kashyap via Wellfound" is a person relaying through a job
+    # board, not the employer. Prefer the employer named in the subject; if
+    # there isn't one, at least drop the "via ..." tail.
+    if " via " in display_name.lower():
+        from_subject = _company_from_subject(msg.subject)
+        if from_subject:
+            return from_subject
+        display_name = re.split(r"\s+via\s+", display_name, flags=re.IGNORECASE)[0].strip()
+
+    if display_name and not display_name_is_email and not _looks_like_placeholder(display_name):
         return display_name
 
     # No usable display name -- try to pull a company out of the subject
@@ -133,9 +174,24 @@ def _guess_position(msg: EmailMessage) -> str:
         too_short = len(candidate) < 4
         too_long = len(words) > 10
         all_junk = len(words) <= 2 and all(w in _JUNK_POSITION_WORDS for w in words)
-        if not (too_short or too_long or all_junk):
+        if not (too_short or too_long or all_junk or _looks_like_placeholder(candidate)):
             return candidate[:100]
-    return msg.subject[:100]
+
+    # Nothing matched cleanly. Falling back to the raw subject is only
+    # useful when it reads like a job title -- not for "X was accepted!",
+    # generic "Job Application", unfilled "[Position Name]" placeholders, or
+    # progress messages.
+    subject = msg.subject.strip()
+    lowered = subject.lower()
+    if (
+        not subject
+        or _looks_like_placeholder(subject)
+        or lowered.strip(" !.") in _GENERIC_SUBJECTS
+        or re.search(r"was accepted", lowered)
+        or any(p in lowered for p in STAGE_PROGRESS_PHRASES)
+    ):
+        return UNKNOWN_POSITION
+    return subject[:100]
 
 
 def classify_new_message(msg: EmailMessage) -> Classification:
@@ -147,6 +203,12 @@ def classify_new_message(msg: EmailMessage) -> Classification:
     has_confirmation_phrase = any(phrase in text for phrase in CONFIRMATION_PHRASES)
 
     is_confirmation = has_confirmation_phrase and (from_known_ats or "applying" in text or "application" in text)
+
+    # A progress message ("you're through to the assignment stage") often
+    # also contains "thank you for your interest in", but it is an update on
+    # an existing application -- never a new "applied" row.
+    if any(p in text for p in STAGE_PROGRESS_PHRASES):
+        is_confirmation = False
 
     return Classification(
         is_application_confirmation=is_confirmation,
