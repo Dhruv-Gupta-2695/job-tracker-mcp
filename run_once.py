@@ -38,6 +38,14 @@ def main() -> None:
             log.info("Stale-application nudges sent: %s", result["stale_nudges"])
         if not result["new_applications"] and not result["updates"] and not result["stale_nudges"]:
             log.info("Nothing new this pass.")
+        # Heartbeat: always tell Telegram the scan ran. A failure here must
+        # never fail the scan itself, so it is logged and swallowed.
+        try:
+            telegram_notify.send_scan_summary(
+                result["new_applications"], result["updates"], result["stale_nudges"]
+            )
+        except Exception:
+            log.exception("Scan finished fine, but the Telegram summary failed to send")
     except GmailAuthExpired:
         log.exception("Gmail login expired")
         _alert(

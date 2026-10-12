@@ -82,6 +82,41 @@ def send_stale_nudge(company: str, position: str, days_stale: int, draft_created
     return str(result["result"]["message_id"])
 
 
+def format_scan_summary(new_applications: list, updates: list, stale_nudges: list) -> str:
+    """Plain-text one-glance summary of a scan pass, e.g.
+    "Scan done: 2 new applications, 0 updates, 0 reminders" plus the names of
+    any new applications (capped so the message stays short)."""
+    n_new = len(new_applications)
+    lines = [
+        f"Scan done: {n_new} new application{'s' if n_new != 1 else ''}, "
+        f"{len(updates)} update{'s' if len(updates) != 1 else ''}, "
+        f"{len(stale_nudges)} reminder{'s' if len(stale_nudges) != 1 else ''}"
+    ]
+    for app in new_applications[:5]:
+        lines.append(f"- {app['company']}: {app['position']}")
+    if n_new > 5:
+        lines.append(f"...and {n_new - 5} more")
+    return "\n".join(lines)
+
+
+def send_scan_summary(new_applications: list, updates: list, stale_nudges: list) -> str:
+    """Sent after every scan, even when nothing is new, so silence on
+    Telegram can never be confused with the scan not running. Plain text
+    (no parse_mode) so company names with special characters can't break it."""
+    text = format_scan_summary(new_applications, updates, stale_nudges)
+    url = TELEGRAM_API.format(token=config.TELEGRAM_BOT_TOKEN, method="sendMessage")
+    resp = requests.post(
+        url,
+        data={"chat_id": config.TELEGRAM_CHAT_ID, "text": text},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    result = resp.json()
+    if not result.get("ok"):
+        raise RuntimeError(f"Telegram API error: {result}")
+    return str(result["result"]["message_id"])
+
+
 def send_telegram_alert(message: str) -> str:
     """Send a plain operational alert (not tied to a specific application) --
     used for things like "your Gmail login expired" or "a scan failed"."""
