@@ -34,7 +34,22 @@ def _row_needs_repair(company: str, position: str) -> bool:
         or "successfully submitted" in pos
         or comp in BOARD_NAMES
         or " via " in comp
+        or re.search(r"\b(hiring|recruiting|recruitment|talent|careers?|hr)(\s+team)?$", comp)
+        or re.search(r"\b(received|thank you)\b", pos)
     )
+
+
+def _recompute_status(messages) -> str:
+    """Strongest outcome among the real replies (receipts are ignored)."""
+    best = "applied"
+    rank = {"applied": 0, "update": 1, "interview": 2, "rejected": 3, "offer": 4}
+    for msg in messages[1:]:
+        if classifier.classify_new_message(msg).is_application_confirmation:
+            continue
+        status = classifier.classify_update(msg).status
+        if rank.get(status, 0) > rank[best]:
+            best = status
+    return best
 
 
 def repair(service, apply: bool, pause: float = 1.1) -> dict:
@@ -69,17 +84,26 @@ def repair(service, apply: bool, pause: float = 1.1) -> dict:
             # isn't junk, but replace pasted subject text with the clean placeholder.
             junk = re.search(r"application was sent to|was accepted|successfully submitted", position, re.IGNORECASE)
             new_position = classifier.UNKNOWN_POSITION if junk else position
-        if company.strip().lower() not in BOARD_NAMES and " via " not in company.lower():
+        if (company.strip().lower() not in BOARD_NAMES and " via " not in company.lower()
+                and new_company.strip().lower() == company.strip().lower()):
             new_company = company
-        if (new_company, new_position) == (company, position):
+        status_col = tracker.COLUMNS.index("Status")
+        old_status = row[status_col]
+        new_status = old_status
+        # Only touch the status if it is "interview"/"update" that could have
+        # come from receipt boilerplate; never downgrade offer/rejected.
+        if old_status in ("interview", "update"):
+            new_status = _recompute_status(messages)
+        if (new_company, new_position, new_status) == (company, position, old_status):
             continue
 
-        log.info("%s: %r / %r  ->  %r / %r", "FIX" if apply else "WOULD FIX",
-                 company, position, new_company, new_position)
+        log.info("%s: %r / %r / %s  ->  %r / %r / %s", "FIX" if apply else "WOULD FIX",
+                 company, position, old_status, new_company, new_position, new_status)
         changed += 1
         if apply:
             fixed = list(row)
             fixed[company_col], fixed[position_col] = new_company, new_position
+            fixed[status_col] = new_status
             sheets_client.update_row("Applications", i + 2, fixed)
             time.sleep(pause)  # stay under Sheets' 60 writes/minute limit
     tracker._invalidate_rows_cache()
