@@ -29,10 +29,11 @@ GMAIL_TOKEN_PATH = _get("GMAIL_TOKEN_PATH", str(PROJECT_ROOT / "token.json"))
 GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/spreadsheets",
-    # gmail.compose: lets this create/edit Gmail Drafts only -- it can never
-    # send mail on its own, delete anything, or read mail beyond what
-    # gmail.readonly already grants. Used for the auto-drafted follow-up
-    # emails feature (drafts always require you to click Send yourself).
+    # gmail.compose: create/edit Gmail Drafts AND send messages/drafts (Google
+    # groups sending under this scope). It cannot delete mail or read more than
+    # gmail.readonly already grants. Auto-drafted follow-ups only create drafts;
+    # actual sending from the webapp is gated by ENABLE_EMAIL_SEND (off by
+    # default) plus a per-send confirmation (see src/reply_mail.py).
     "https://www.googleapis.com/auth/gmail.compose",
     # drive.file: can only see/touch files this app itself created -- never
     # your whole Drive. Used to store your core CV and every generated
@@ -78,6 +79,12 @@ GITHUB_WORKFLOW_FILE = _get("GITHUB_WORKFLOW_FILE", "scan.yml")
 # Simple shared-secret login for the webapp (it has no other auth) -- pick
 # your own value, required to use webapp/ at all once set.
 WEBAPP_PASSWORD = _get("WEBAPP_PASSWORD")
+
+# Master switch for sending email from the webapp. OFF unless this is exactly
+# "true" -- drafting with AI and saving to Gmail Drafts work either way.
+ENABLE_EMAIL_SEND = (_get("ENABLE_EMAIL_SEND", "false") or "false").strip().lower() == "true"
+# Hard ceiling on emails sent from the webapp per calendar day (UTC).
+MAX_SENDS_PER_DAY = int(_get("MAX_SENDS_PER_DAY", "5") or "5")
 
 # Just used to personalize PDF titles/filenames ("<name> - CV.pdf") -- not
 # used for anything else.

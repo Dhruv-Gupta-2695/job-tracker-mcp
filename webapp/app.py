@@ -29,7 +29,7 @@ from pydantic import BaseModel  # noqa: E402
 
 from src import (  # noqa: E402
     ai_generate, config, cv_store, cv_versions, github_trigger,
-    pdf_export, prompts, similarity, tracker,
+    pdf_export, prompts, reply_mail, similarity, tracker,
 )
 
 app = FastAPI(title="Job Tracker")
@@ -96,6 +96,54 @@ def get_applications():
     for a in apps:
         counts[a.get("Status", "")] = counts.get(a.get("Status", ""), 0) + 1
     return {"applications": apps, "counts": counts, "sheet_url": config.GOOGLE_SHEET_URL}
+
+
+# --- Email replies (AI draft -> Gmail draft or guarded send) ---
+
+class ReplyWriteRequest(BaseModel):
+    thread_id: str
+    instructions: str = ""
+
+
+class ReplyBodyRequest(BaseModel):
+    thread_id: str
+    body: str
+
+
+class ReplySendRequest(ReplyBodyRequest):
+    confirm_token: str
+
+
+def _reply_call(fn, *args):
+    try:
+        return fn(*args)
+    except reply_mail.ReplyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:  # e.g. GEMINI_API_KEY missing
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        print(f"[reply] unexpected error: {exc!r}", flush=True)
+        raise HTTPException(status_code=500, detail=f"Something went wrong: {exc}") from exc
+
+
+@app.post("/api/reply/write", dependencies=[Depends(require_auth)])
+def reply_write(req: ReplyWriteRequest):
+    return _reply_call(reply_mail.write_reply, req.thread_id, req.instructions)
+
+
+@app.post("/api/reply/draft", dependencies=[Depends(require_auth)])
+def reply_save_draft(req: ReplyBodyRequest):
+    return _reply_call(reply_mail.save_draft, req.thread_id, req.body)
+
+
+@app.post("/api/reply/prepare", dependencies=[Depends(require_auth)])
+def reply_prepare(req: ReplyBodyRequest):
+    return _reply_call(reply_mail.prepare_send, req.thread_id, req.body)
+
+
+@app.post("/api/reply/send", dependencies=[Depends(require_auth)])
+def reply_send(req: ReplySendRequest):
+    return _reply_call(reply_mail.send_reply, req.thread_id, req.body, req.confirm_token)
 
 
 # --- Core CV ---
@@ -240,7 +288,10 @@ def trigger_scan(only_if_stale_minutes: float | None = None):
 def get_config():
     """Lets the frontend know which optional features are actually usable,
     so it can hide buttons that would just fail (e.g. no GitHub PAT set)."""
-    return {"can_trigger_scan": bool(config.GITHUB_PAT and config.GITHUB_REPO)}
+    return {
+        "can_trigger_scan": bool(config.GITHUB_PAT and config.GITHUB_REPO),
+        "can_send_email": config.ENABLE_EMAIL_SEND,
+    }
 
 
 # --- Frontend ---
