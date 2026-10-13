@@ -190,7 +190,7 @@ def _position_after_sent_heading(body: str, company: str) -> str:
     HTML flattened to spaces."""
     co = re.escape(company)
     match = re.search(
-        r"application was sent to\s+" + co + r"[:\s]+(.+?)\s+" + co + r"\s*[·•|]",
+        r"application was sent to\s+" + co + r"[:\s]+(.+?)\s+(?:" + co + r"\s*(?:[·•|]|&middot;|&#183;)|applied on\b)",
         body, re.IGNORECASE | re.DOTALL,
     )
     if not match:

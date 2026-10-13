@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import re
+from html import unescape
 from dataclasses import dataclass
 from datetime import datetime
 from email.mime.text import MIMEText
@@ -51,7 +52,10 @@ def _extract_body(payload: dict) -> str:
 
     if payload.get("mimeType") == "text/html" and payload.get("body", {}).get("data"):
         html = decode(payload["body"]["data"])
-        return re.sub("<[^<]+?>", " ", html)
+        html = re.sub(r"(?is)<(style|script|head)\b.*?</\1>", " ", html)
+        # Decode entities (&middot;, &amp;, &nbsp; ...) so patterns that look
+        # for "Company · City" or a plain "&" in a title still match.
+        return unescape(re.sub("<[^<]+?>", " ", html)).replace("\xa0", " ")
 
     for part in payload.get("parts", []) or []:
         text = _extract_body(part)
