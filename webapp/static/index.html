@@ -81,6 +81,8 @@
   .donut .num { font-size: 8px; font-weight: 600; fill: var(--text); }
   .donut .sub { font-size: 2.6px; fill: var(--muted); }
   .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; flex: 1; min-width: 280px; }
+  button.btn.range { padding: 6px 12px; font-size: 13px; }
+  button.btn.range.active { background: var(--accent); border-color: var(--accent); }
   button.tile {
     background: #0c0e12; border: 1px solid var(--border); border-radius: 8px; padding: 12px;
     text-align: left; color: var(--text); cursor: pointer; font: inherit;
@@ -125,6 +127,12 @@
   <section class="tab active" id="tab-applications">
     <div class="card">
       <h2>Overview</h2>
+      <div class="toolbar" id="rangeBar">
+        <button class="btn secondary range" data-days="1">Last 24 hours</button>
+        <button class="btn secondary range" data-days="3">3 days</button>
+        <button class="btn secondary range" data-days="7">7 days</button>
+        <button class="btn secondary range active" data-days="all">All</button>
+      </div>
       <div class="dash">
         <svg id="donut" class="donut" viewBox="0 0 42 42" role="img" aria-label="Applications by status"></svg>
         <div class="tiles" id="tiles"></div>
@@ -262,6 +270,20 @@ function orderedStatuses(counts) {
   return STATUS_ORDER.filter(k => counts[k]).concat(extra);
 }
 
+// Applied Date is a plain YYYY-MM-DD, so the window is measured in whole days:
+// "Last 24 hours" = today and yesterday, "3 days" = the last 3 days, etc.
+function inRange(a, days) {
+  if (days === 'all') return true;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(a['Applied Date'] || '');
+  if (!m) return false;
+  const applied = new Date(+m[1], +m[2] - 1, +m[3]);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((today - applied) / 86400000) <= days;
+}
+
+function appsInRange() { return allApps.filter(a => inRange(a, view.days)); }
+
 function filterApps(apps, status, query) {
   const q = (query || '').trim().toLowerCase();
   return apps.filter(a =>
@@ -293,12 +315,13 @@ function donutSegments(counts) {
 }
 
 // ---- Rendering ----
-const view = { page: 1, pageSize: 25, status: 'all', query: '' };
+const view = { page: 1, pageSize: 25, status: 'all', query: '', days: 'all' };
 let allApps = [];
 
 function renderDashboard() {
-  const counts = countByStatus(allApps);
-  const total = allApps.length;
+  const scoped = appsInRange();
+  const counts = countByStatus(scoped);
+  const total = scoped.length;
 
   const segs = donutSegments(counts).map(s =>
     `<circle cx="21" cy="21" r="15.9155" fill="none" stroke="${statusColor(s.status)}" stroke-width="5"
@@ -328,7 +351,7 @@ function renderDashboard() {
 }
 
 function renderTable() {
-  const filtered = filterApps(allApps, view.status, view.query);
+  const filtered = filterApps(appsInRange(), view.status, view.query);
   const pg = paginate(filtered, view.page, view.pageSize);
   view.page = pg.page;
 
@@ -352,6 +375,13 @@ function renderTable() {
   document.getElementById('prevPage').disabled = pg.page <= 1;
   document.getElementById('nextPage').disabled = pg.page >= pg.totalPages;
 }
+
+document.querySelectorAll('#rangeBar .range').forEach(btn => btn.addEventListener('click', () => {
+  view.days = btn.dataset.days === 'all' ? 'all' : parseInt(btn.dataset.days, 10);
+  view.page = 1;
+  document.querySelectorAll('#rangeBar .range').forEach(b => b.classList.toggle('active', b === btn));
+  renderDashboard(); renderTable();
+}));
 
 document.getElementById('prevPage').addEventListener('click', () => { view.page--; renderTable(); });
 document.getElementById('nextPage').addEventListener('click', () => { view.page++; renderTable(); });
