@@ -179,6 +179,27 @@ def _position_before_company(body: str, company: str) -> str:
     return match.group(1).strip() if match else ""
 
 
+def _position_after_sent_heading(body: str, company: str) -> str:
+    """LinkedIn layout:
+        Your application was sent to <Company>
+        <Job title>                      (often followed by a tracking URL)
+        <Company> · <City> (On-site)
+        Applied on <date>
+    Takes whatever sits between the heading and the second mention of the
+    company, minus URLs. Works whether the email arrives as plain text or as
+    HTML flattened to spaces."""
+    co = re.escape(company)
+    match = re.search(
+        r"application was sent to\s+" + co + r"[:\s]+(.+?)\s+" + co + r"\s*[·•|]",
+        body, re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return ""
+    text = re.sub(r"https?://\S+", " ", match.group(1))
+    text = re.sub(r"\s+", " ", text).strip(" :-")
+    return text if 3 <= len(text) <= 100 else ""
+
+
 def _looks_like_placeholder(text: str) -> bool:
     """Unfilled template text such as "[Position Name]" or "{{role}}"."""
     return bool(re.search(r"[\[\]{}<>]", text))
@@ -256,9 +277,10 @@ def _guess_position(msg: EmailMessage) -> str:
     if is_shared_board_sender(msg.sender):
         board_company = _company_from_board_subject(msg.subject)
         if board_company:
-            candidate = _position_before_company(msg.body, board_company)
-            if candidate and acceptable(candidate):
-                return candidate[:100]
+            for finder in (_position_after_sent_heading, _position_before_company):
+                candidate = finder(msg.body, board_company)
+                if candidate and acceptable(candidate):
+                    return candidate[:100]
 
     patterns = [
         r"applying (?:to|for) the (.+?) (?:position|role)",
@@ -286,7 +308,7 @@ def _guess_position(msg: EmailMessage) -> str:
         not subject
         or _looks_like_placeholder(subject)
         or lowered.strip(" !.") in _GENERIC_SUBJECTS
-        or re.search(r"was accepted|successfully submitted", lowered)
+        or re.search(r"was accepted|successfully submitted|application was sent to", lowered)
         or any(p in lowered for p in STAGE_PROGRESS_PHRASES)
     ):
         return UNKNOWN_POSITION

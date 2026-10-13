@@ -1,0 +1,43 @@
+name: Job Tracker Backfill
+
+# Manual-only recovery run: re-reads the last N days of Gmail and records any
+# application or outcome email the normal scan missed. Safe to run more than
+# once (no duplicates). Trigger it from the Actions tab -> "Job Tracker
+# Backfill" -> "Run workflow", and pick how many days to look back.
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "How many days of email to re-read"
+        required: true
+        default: "14"
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write Google credentials from secrets
+        run: |
+          echo "$GMAIL_CREDENTIALS_JSON" > credentials.json
+          echo "$GMAIL_TOKEN_JSON" > token.json
+        env:
+          GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
+          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
+
+      - name: Run backfill
+        run: python3 backfill.py "${{ inputs.days }}"
+        env:
+          GMAIL_CREDENTIALS_PATH: ./credentials.json
+          GMAIL_TOKEN_PATH: ./token.json
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
