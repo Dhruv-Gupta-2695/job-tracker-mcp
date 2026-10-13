@@ -75,6 +75,30 @@
   .status-msg.ok { background: #17301f; color: var(--green); }
   .status-msg.err { background: #3a1e20; color: var(--red); }
   .similar-box { background: #1a2436; border: 1px solid var(--accent-dim); border-radius: 8px; padding: 14px; margin-top: 14px; }
+  /* Dashboard + pagination */
+  .dash { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; }
+  .donut { width: 170px; height: 170px; flex: none; }
+  .donut .num { font-size: 8px; font-weight: 600; fill: var(--text); }
+  .donut .sub { font-size: 2.6px; fill: var(--muted); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; flex: 1; min-width: 280px; }
+  button.tile {
+    background: #0c0e12; border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+    text-align: left; color: var(--text); cursor: pointer; font: inherit;
+  }
+  button.tile:hover { border-color: var(--accent-dim); }
+  button.tile.active { border-color: var(--accent); background: #1a2436; }
+  .tile .num { font-size: 24px; font-weight: 600; line-height: 1.2; }
+  .tile .lbl { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; text-transform: capitalize; }
+  .tile .pct { font-size: 11px; color: var(--muted); margin-left: auto; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+  .toolbar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  .toolbar input[type=text] { flex: 1; min-width: 200px; width: auto; }
+  select {
+    background: #0c0e12; border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+    padding: 9px 10px; font-size: 13px; font-family: inherit;
+  }
+  .pager { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; gap: 10px; flex-wrap: wrap; }
+  .pager .btns { display: flex; gap: 8px; }
   pre.generated { white-space: pre-wrap; font-family: inherit; font-size: 13px; background: #0c0e12; border: 1px solid var(--border); border-radius: 6px; padding: 12px; max-height: 320px; overflow-y: auto; }
 </style>
 </head>
@@ -100,11 +124,34 @@
 
   <section class="tab active" id="tab-applications">
     <div class="card">
+      <h2>Overview</h2>
+      <div class="dash">
+        <svg id="donut" class="donut" viewBox="0 0 42 42" role="img" aria-label="Applications by status"></svg>
+        <div class="tiles" id="tiles"></div>
+      </div>
+    </div>
+    <div class="card">
       <h2>Applications</h2>
+      <div class="toolbar">
+        <input type="text" id="appSearch" placeholder="Search company or position..." />
+        <select id="pageSize" aria-label="Rows per page">
+          <option value="10">10 per page</option>
+          <option value="25" selected>25 per page</option>
+          <option value="50">50 per page</option>
+          <option value="100">100 per page</option>
+        </select>
+      </div>
       <table id="appsTable">
         <thead><tr><th>Company</th><th>Position</th><th>Status</th><th>Applied</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
+      <div class="pager">
+        <span class="muted" id="pageInfo"></span>
+        <div class="btns">
+          <button class="btn secondary" id="prevPage">&larr; Prev</button>
+          <button class="btn secondary" id="nextPage">Next &rarr;</button>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -184,24 +231,143 @@ document.querySelectorAll('nav button').forEach(btn => {
 });
 
 // --- Applications ---
+// Company / position text comes from email subjects and bodies, so it must
+// never be dropped into the page as raw HTML.
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const safeUrl = u => (/^https?:\/\//i.test(u || '') ? u : '');
+
+const STATUS_ORDER = ['applied', 'interview', 'offer', 'rejected', 'update'];
+const STATUS_COLORS = {
+  applied: '#6b7385', interview: '#d9b34c', offer: '#4caf7d', rejected: '#e0685f', update: '#7fa8e0',
+};
+const FALLBACK_COLOR = '#a78bda';
+const statusKey = s => (s || 'applied').toString().trim().toLowerCase() || 'applied';
+const statusColor = s => STATUS_COLORS[s] || FALLBACK_COLOR;
+
 function badge(status) {
-  const s = (status || 'applied').toLowerCase();
-  return `<span class="badge ${s}">${s}</span>`;
+  const s = statusKey(status);
+  return `<span class="badge ${esc(s)}">${esc(s)}</span>`;
 }
+
+// ---- Pure helpers (no DOM) ----
+function countByStatus(apps) {
+  const counts = {};
+  apps.forEach(a => { const k = statusKey(a.Status); counts[k] = (counts[k] || 0) + 1; });
+  return counts;
+}
+
+function orderedStatuses(counts) {
+  const extra = Object.keys(counts).filter(k => !STATUS_ORDER.includes(k)).sort();
+  return STATUS_ORDER.filter(k => counts[k]).concat(extra);
+}
+
+function filterApps(apps, status, query) {
+  const q = (query || '').trim().toLowerCase();
+  return apps.filter(a =>
+    (status === 'all' || statusKey(a.Status) === status) &&
+    (!q || `${a.Company || ''} ${a.Position || ''}`.toLowerCase().includes(q)));
+}
+
+function paginate(items, page, pageSize) {
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const p = Math.min(Math.max(1, page), totalPages);
+  const startIdx = (p - 1) * pageSize;
+  return {
+    items: items.slice(startIdx, startIdx + pageSize), page: p, totalPages, total,
+    from: total ? startIdx + 1 : 0, to: Math.min(startIdx + pageSize, total),
+  };
+}
+
+// Donut as stacked stroke-dasharray circles (circumference scaled to 100).
+function donutSegments(counts) {
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  let acc = 0;
+  return orderedStatuses(counts).map(status => {
+    const pct = total ? (counts[status] / total) * 100 : 0;
+    const seg = { status, count: counts[status], pct, offset: 25 - acc };
+    acc += pct;
+    return seg;
+  });
+}
+
+// ---- Rendering ----
+const view = { page: 1, pageSize: 25, status: 'all', query: '' };
+let allApps = [];
+
+function renderDashboard() {
+  const counts = countByStatus(allApps);
+  const total = allApps.length;
+
+  const segs = donutSegments(counts).map(s =>
+    `<circle cx="21" cy="21" r="15.9155" fill="none" stroke="${statusColor(s.status)}" stroke-width="5"
+       stroke-dasharray="${s.pct.toFixed(3)} ${(100 - s.pct).toFixed(3)}" stroke-dashoffset="${s.offset.toFixed(3)}">
+       <title>${esc(s.status)}: ${s.count} (${s.pct.toFixed(0)}%)</title></circle>`).join('');
+  document.getElementById('donut').innerHTML =
+    `<circle cx="21" cy="21" r="15.9155" fill="none" stroke="#2a2f3a" stroke-width="5"/>${segs}
+     <text x="21" y="22.5" text-anchor="middle" class="num">${total}</text>
+     <text x="21" y="27" text-anchor="middle" class="sub">${total === 1 ? 'application' : 'applications'}</text>`;
+
+  const tile = (key, label, count, color) => `
+    <button class="tile${view.status === key ? ' active' : ''}" data-status="${esc(key)}">
+      <div class="num">${count}</div>
+      <div class="lbl"><span class="dot" style="background:${color}"></span>${esc(label)}
+        ${key !== 'all' && total ? `<span class="pct">${Math.round((count / total) * 100)}%</span>` : ''}</div>
+    </button>`;
+  const statuses = orderedStatuses(counts);
+  // Always show the four headline statuses, even at 0, so the layout is stable.
+  const shown = ['applied', 'interview', 'offer', 'rejected'].concat(statuses.filter(s => !['applied', 'interview', 'offer', 'rejected'].includes(s)));
+  document.getElementById('tiles').innerHTML =
+    tile('all', 'total', total, '#e6e8ee') + shown.map(s => tile(s, s, counts[s] || 0, statusColor(s))).join('');
+  document.querySelectorAll('#tiles .tile').forEach(btn => btn.addEventListener('click', () => {
+    view.status = (view.status === btn.dataset.status) ? 'all' : btn.dataset.status;
+    view.page = 1;
+    renderDashboard(); renderTable();
+  }));
+}
+
+function renderTable() {
+  const filtered = filterApps(allApps, view.status, view.query);
+  const pg = paginate(filtered, view.page, view.pageSize);
+  view.page = pg.page;
+
+  document.querySelector('#appsTable tbody').innerHTML = pg.items.map(a => {
+    const link = safeUrl(a['Gmail Link']);
+    return `
+    <tr>
+      <td>${esc(a.Company)}</td>
+      <td>${esc(a.Position)}</td>
+      <td>${badge(a.Status)}</td>
+      <td>${esc(a['Applied Date'])}</td>
+      <td>${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">email ↗</a>` : ''}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="5" class="muted">${
+    allApps.length ? 'No applications match your filter.' : 'No applications tracked yet.'}</td></tr>`;
+
+  const filterNote = view.status !== 'all' ? ` · filtered by "${esc(view.status)}"` : '';
+  document.getElementById('pageInfo').innerHTML = pg.total
+    ? `Showing ${pg.from}–${pg.to} of ${pg.total} · Page ${pg.page} of ${pg.totalPages}${filterNote}`
+    : `0 results${filterNote}`;
+  document.getElementById('prevPage').disabled = pg.page <= 1;
+  document.getElementById('nextPage').disabled = pg.page >= pg.totalPages;
+}
+
+document.getElementById('prevPage').addEventListener('click', () => { view.page--; renderTable(); });
+document.getElementById('nextPage').addEventListener('click', () => { view.page++; renderTable(); });
+document.getElementById('pageSize').addEventListener('change', e => {
+  view.pageSize = parseInt(e.target.value, 10) || 25; view.page = 1; renderTable();
+});
+document.getElementById('appSearch').addEventListener('input', e => {
+  view.query = e.target.value; view.page = 1; renderTable();
+});
 
 async function loadApplications() {
   const data = await api('/api/applications');
   document.getElementById('sheetLink').href = data.sheet_url || '#';
-  const tbody = document.querySelector('#appsTable tbody');
-  tbody.innerHTML = (data.applications || []).slice().reverse().map(a => `
-    <tr>
-      <td>${a.Company || ''}</td>
-      <td>${a.Position || ''}</td>
-      <td>${badge(a.Status)}</td>
-      <td>${a['Applied Date'] || ''}</td>
-      <td>${a['Gmail Link'] ? `<a href="${a['Gmail Link']}" target="_blank">email ↗</a>` : ''}</td>
-    </tr>
-  `).join('') || '<tr><td colspan="5" class="muted">No applications tracked yet.</td></tr>';
+  allApps = (data.applications || []).slice().reverse();  // newest first
+  renderDashboard();
+  renderTable();
 }
 
 // --- CV Manager ---
