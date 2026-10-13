@@ -102,6 +102,48 @@ def _find_recent_row_by_sender(sender: str, applied_at: datetime) -> Optional[in
     return None
 
 
+def _find_recent_row_by_company_position(company: str, position: str, applied_at: datetime) -> Optional[int]:
+    """Dedupe for job-board senders (see classifier.SHARED_BOARD_DOMAINS):
+    the sender is the same for every employer, so the only meaningful
+    duplicate is the same company AND position inside the window."""
+    company_col = COLUMNS.index("Company")
+    position_col = COLUMNS.index("Position")
+    date_col = COLUMNS.index("Applied Date")
+    for i, row in enumerate(_get_rows()):
+        if row[company_col].strip().lower() != company.strip().lower():
+            continue
+        if row[position_col].strip().lower() != position.strip().lower():
+            continue
+        try:
+            existing_date = datetime.strptime(row[date_col], "%Y-%m-%d")
+        except ValueError:
+            continue
+        if abs((applied_at - existing_date).days) <= DEDUPE_WINDOW_DAYS:
+            return i + 2
+    return None
+
+
+def find_application_by_company(hint: str) -> tuple[Optional[int], Optional[list]]:
+    """Newest tracked application whose company matches `hint` (either
+    contains the other, case-insensitive), falling back to the hint
+    appearing in a stored confirmation email body. Used to attach an
+    "An update from X" email -- which job boards send as a new thread -- to
+    the application it is about."""
+    h = hint.strip().lower()
+    if len(h) < 3:
+        return None, None
+    company_col = COLUMNS.index("Company")
+    desc_col = COLUMNS.index("Description")
+    best_by_company = best_by_desc = None
+    for i, row in enumerate(_get_rows()):
+        company = row[company_col].strip().lower()
+        if company and (h == company or h in company or (len(company) >= 4 and company in h)):
+            best_by_company = (i + 2, row)
+        elif h in row[desc_col].lower():
+            best_by_desc = (i + 2, row)
+    return best_by_company or best_by_desc or (None, None)
+
+
 def add_application(
     company: str, position: str, sender: str, thread_id: str, applied_at: datetime,
     description: str = "",
@@ -119,7 +161,14 @@ def add_application(
     row_num, _ = _find_row_by_thread_id(thread_id)
     if row_num is not None:
         return False
-    if _find_recent_row_by_sender(sender, applied_at) is not None:
+    from . import classifier  # local import: classifier imports gmail_client, keep tracker's top-level light
+    if classifier.is_shared_board_sender(sender):
+        # Wellfound/LinkedIn/etc. send every employer from ONE address, so
+        # matching on sender alone silently dropped every application after
+        # the first one in a 14-day window. Match on company + position.
+        if _find_recent_row_by_company_position(company, position, applied_at) is not None:
+            return False
+    elif _find_recent_row_by_sender(sender, applied_at) is not None:
         return False
 
     sheets_client.append_row(APPLICATIONS_RANGE, [

@@ -39,6 +39,24 @@ CONFIRMATION_PHRASES = [
     "we have received your application", "your application to",
     "application confirmation", "we've received your application",
     "thank you for your interest in", "application was submitted",
+    "successfully submitted", "application has been submitted",
+    "application submitted", "your application was sent",
+]
+
+# Job boards that relay many different employers' applications through ONE
+# sender address (every Wellfound email comes from team@hi.wellfound.com,
+# every LinkedIn one from jobs-noreply@linkedin.com). The sender therefore
+# says nothing about which employer an email is about.
+SHARED_BOARD_DOMAINS = (
+    "wellfound.com", "linkedin.com", "indeed.com", "glassdoor.com",
+    "naukri.com", "instahyre.com", "cutshort.io", "hirist.com",
+    "foundit.in", "monster.com", "ziprecruiter.com", "otta.com",
+)
+
+# Strong, unambiguous offer wording only -- "congratulations" alone is far
+# too common in confirmation emails to treat as a status signal here.
+_STRONG_OFFER_PHRASES = [
+    "pleased to offer", "job offer", "offer letter", "excited to offer", "extend an offer",
 ]
 
 REJECTION_PHRASES = [
@@ -100,6 +118,67 @@ def _sender_domain(sender: str) -> str:
     return match.group(1).lower() if match else ""
 
 
+def is_shared_board_sender(sender: str) -> bool:
+    domain = _sender_domain(sender)
+    return any(domain == d or domain.endswith("." + d) for d in SHARED_BOARD_DOMAINS)
+
+
+def is_status_update_email(msg: EmailMessage) -> bool:
+    """True for an outcome/progress email about an application (rejection,
+    offer, "An update from X") as opposed to a fresh application receipt.
+    Rejection wording is only looked for near the top of the email, since
+    confirmations sometimes carry disclaimers further down."""
+    subject = msg.subject.lower()
+    if re.match(r"\s*(?:re:\s*)?(?:an\s+)?update\s+(?:from|on|about|regarding)\b", subject):
+        return True
+    head = f"{msg.subject}\n{msg.snippet}\n{msg.body[:600]}".lower()
+    if any(p in head for p in REJECTION_PHRASES):
+        return True
+    return any(p in head for p in _STRONG_OFFER_PHRASES)
+
+
+def company_hint_from_update(msg: EmailMessage) -> str:
+    """Best guess at which employer an update email is about, so it can be
+    matched to an already-tracked application even though job boards send
+    updates as a brand-new thread, not a reply to the original."""
+    subject = msg.subject.strip()
+    match = re.search(r"update\s+(?:from|on|about|regarding)\s+(.+?)\s*$", subject, re.IGNORECASE)
+    if match:
+        hint = re.sub(r"\s+application$", "", match.group(1).strip(), flags=re.IGNORECASE)
+        if hint and not hint.lower().startswith(("your", "my", "the application")):
+            return hint
+    body = re.sub(r"\s+", " ", msg.body)
+    match = re.search(r"(?:position|role) at ([A-Z][^.,\n]{1,60}?)[.,]", body)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
+_BOARD_SUBJECT_COMPANY = [
+    r"^\s*application to (.+?) successfully submitted",
+    r"application was sent to (.+?)\s*$",
+    r"^\s*(.+?) was accepted!?\s*$",
+]
+
+
+def _company_from_board_subject(subject: str) -> str:
+    for pattern in _BOARD_SUBJECT_COMPANY:
+        match = re.search(pattern, subject, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return ""
+
+
+def _position_before_company(body: str, company: str) -> str:
+    """Wellfound-style layout: the job title sits on the line just above
+    "<Company> · <location>". Works for plain text and for HTML that was
+    flattened to spaces, because the title can't contain sentence-ending
+    punctuation and so always starts right after the previous sentence."""
+    pattern = r"(?:^|[.!?]\s+|\n\s*)([^.!?\n]{3,80}?)\s*\n?\s*" + re.escape(company) + r"\s*[·•|]"
+    match = re.search(pattern, body)
+    return match.group(1).strip() if match else ""
+
+
 def _looks_like_placeholder(text: str) -> bool:
     """Unfilled template text such as "[Position Name]" or "{{role}}"."""
     return bool(re.search(r"[\[\]{}<>]", text))
@@ -123,6 +202,13 @@ def _guess_company(msg: EmailMessage) -> str:
     # (e.g. `"jobs@brassring.com" <jobs@brassring.com>`) -- that is useless
     # as a company name, so treat it the same as having no display name.
     display_name_is_email = "@" in display_name
+
+    # Job boards send every employer's emails from one address, so the
+    # sender is useless -- the employer is named in the subject instead.
+    if is_shared_board_sender(msg.sender):
+        from_board_subject = _company_from_board_subject(msg.subject)
+        if from_board_subject:
+            return from_board_subject
 
     # "Satish Kashyap via Wellfound" is a person relaying through a job
     # board, not the employer. Prefer the employer named in the subject; if
@@ -158,8 +244,25 @@ def _guess_position(msg: EmailMessage) -> str:
     # Ordered most-specific first, since the generic "application to/for X"
     # pattern would otherwise grab a company name out of the subject line
     # before more precise job-title patterns get a chance to match the body.
+    def acceptable(candidate: str) -> bool:
+        words = candidate.lower().split()
+        too_short = len(candidate) < 4
+        too_long = len(words) > 10
+        all_junk = len(words) <= 2 and all(w in _JUNK_POSITION_WORDS for w in words)
+        status_text = bool(re.search(r"successfully|submitted|received|accepted", candidate, re.IGNORECASE))
+        return not (too_short or too_long or all_junk or status_text or _looks_like_placeholder(candidate))
+
+    # Job-board layout (Wellfound): title sits just above "<Company> · <city>".
+    if is_shared_board_sender(msg.sender):
+        board_company = _company_from_board_subject(msg.subject)
+        if board_company:
+            candidate = _position_before_company(msg.body, board_company)
+            if candidate and acceptable(candidate):
+                return candidate[:100]
+
     patterns = [
         r"applying (?:to|for) the (.+?) (?:position|role)",
+        r"application (?:to|for) the (.+?) (?:position|role)",
         r"for the (.+?) (?:position|role)",
         r"your interest in the (.+?) (?:position|role)",
         r"application (?:to|for) (.+?)(?:\.|\n|$)",
@@ -170,11 +273,7 @@ def _guess_position(msg: EmailMessage) -> str:
         if not match:
             continue
         candidate = match.group(1).strip(" .,-")
-        words = candidate.lower().split()
-        too_short = len(candidate) < 4
-        too_long = len(words) > 10
-        all_junk = len(words) <= 2 and all(w in _JUNK_POSITION_WORDS for w in words)
-        if not (too_short or too_long or all_junk or _looks_like_placeholder(candidate)):
+        if acceptable(candidate):
             return candidate[:100]
 
     # Nothing matched cleanly. Falling back to the raw subject is only
@@ -187,7 +286,7 @@ def _guess_position(msg: EmailMessage) -> str:
         not subject
         or _looks_like_placeholder(subject)
         or lowered.strip(" !.") in _GENERIC_SUBJECTS
-        or re.search(r"was accepted", lowered)
+        or re.search(r"was accepted|successfully submitted", lowered)
         or any(p in lowered for p in STAGE_PROGRESS_PHRASES)
     ):
         return UNKNOWN_POSITION
@@ -208,6 +307,12 @@ def classify_new_message(msg: EmailMessage) -> Classification:
     # also contains "thank you for your interest in", but it is an update on
     # an existing application -- never a new "applied" row.
     if any(p in text for p in STAGE_PROGRESS_PHRASES):
+        is_confirmation = False
+
+    # Likewise a rejection / offer / "An update from X" email is an outcome,
+    # not a new application -- even though it often says "your application
+    # to" and so also matches the confirmation phrases.
+    if is_status_update_email(msg):
         is_confirmation = False
 
     return Classification(

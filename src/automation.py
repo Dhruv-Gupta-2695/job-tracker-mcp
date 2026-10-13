@@ -22,22 +22,86 @@ from datetime import datetime, timedelta
 from . import classifier, config, gmail_client, telegram_notify, tracker
 
 
-def scan_new_applications() -> list[dict]:
+# Updates found by scan_new_applications() that arrived as their OWN thread
+# (job boards like Wellfound send "An update from X" as a brand-new email,
+# not a reply to the application receipt). run_once() merges these into its
+# "updates" list.
+_cross_thread_updates: list[dict] = []
+
+
+def _handle_cross_thread_update(msg, notify: bool) -> bool:
+    """Try to attach a standalone outcome email ("An update from X") to an
+    already-tracked application by company name. Returns True if matched."""
+    hint = classifier.company_hint_from_update(msg)
+    if not hint:
+        return False
+    row_num, row = tracker.find_application_by_company(hint)
+    if row_num is None:
+        return False
+
+    app = dict(zip(tracker.COLUMNS, row))
+    result = classifier.classify_update(msg)
+    telegram_sent = False
+    if notify:
+        try:
+            telegram_notify.send_telegram_update(
+                company=app["Company"], position=app["Position"],
+                status=result.status, summary=msg.body or msg.snippet,
+            )
+            telegram_sent = True
+        except Exception as exc:  # noqa: BLE001
+            print(f"[telegram_notify] failed to send for {app['Company']}: {exc}")
+
+    tracker.update_application(
+        thread_id=app["Thread ID"], status=result.status,
+        summary=msg.body or msg.snippet, updated_at=msg.received_at,
+        telegram_sent=telegram_sent,
+    )
+    _cross_thread_updates.append({
+        "company": app["Company"], "status": result.status, "telegram_sent": telegram_sent,
+    })
+    return True
+
+
+def scan_new_applications(
+    lookback_days: int | None = None, ignore_seen: bool = False, notify: bool = True,
+) -> list[dict]:
     """Returns a list of {"company", "position"} dicts for every new
-    application confirmation found this run."""
+    application confirmation found this run.
+
+    lookback_days / ignore_seen are for backfill.py: re-read the last N days
+    even though those messages were already seen. Safe to repeat, because
+    add_application() still dedupes by thread and by company/position."""
     service = gmail_client.get_gmail_service()
 
-    last_scan = tracker.get_last_scan_time()
-    since = last_scan or (datetime.now() - timedelta(days=config.INITIAL_LOOKBACK_DAYS))
-    seen_ids = tracker.get_last_seen_message_ids()
+    if lookback_days is not None:
+        since = datetime.now() - timedelta(days=lookback_days)
+    else:
+        last_scan = tracker.get_last_scan_time()
+        since = last_scan or (datetime.now() - timedelta(days=config.INITIAL_LOOKBACK_DAYS))
+    seen_ids = set() if ignore_seen else tracker.get_last_seen_message_ids()
 
-    messages = gmail_client.fetch_messages_since(service, since)
+    # Oldest first, so an application receipt is always recorded before any
+    # update about it that arrived in the same batch (Gmail returns newest
+    # first, which would make the update find nothing to attach to).
+    messages = sorted(gmail_client.fetch_messages_since(service, since), key=lambda m: m.received_at)
+    tracked_threads = {app["Thread ID"] for app in tracker.list_applications()}
     new_ids = set()
     added = []
 
     for msg in messages:
-        new_ids.add(msg.message_id)
         if msg.message_id in seen_ids:
+            continue
+
+        # Replies inside an already-tracked thread belong to
+        # check_thread_updates(). If this scan marked them "seen" first, that
+        # step would skip them and every reply would be silently lost.
+        if msg.thread_id in tracked_threads:
+            continue
+        new_ids.add(msg.message_id)
+
+        if classifier.is_status_update_email(msg):
+            _handle_cross_thread_update(msg, notify)
             continue
 
         result = classifier.classify_new_message(msg)
@@ -52,9 +116,11 @@ def scan_new_applications() -> list[dict]:
             )
             if was_added:
                 added.append({"company": result.company, "position": result.position})
+                tracked_threads.add(msg.thread_id)
 
     tracker.add_seen_message_ids(new_ids)
-    tracker.set_last_scan_time(datetime.now())
+    if lookback_days is None:
+        tracker.set_last_scan_time(datetime.now())
     return added
 
 
@@ -174,9 +240,10 @@ def check_stale_applications() -> list[dict]:
     return nudged
 
 
-def run_once() -> dict:
+def run_once(lookback_days: int | None = None, ignore_seen: bool = False, notify: bool = True) -> dict:
     """Convenience entry point: does all three steps, returns a summary."""
-    new_apps = scan_new_applications()
-    updates = check_thread_updates()
+    _cross_thread_updates.clear()
+    new_apps = scan_new_applications(lookback_days=lookback_days, ignore_seen=ignore_seen, notify=notify)
+    updates = _cross_thread_updates.copy() + check_thread_updates()
     nudges = check_stale_applications()
     return {"new_applications": new_apps, "updates": updates, "stale_nudges": nudges}
