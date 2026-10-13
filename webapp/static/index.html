@@ -358,6 +358,12 @@ function sourceOf(a) {
 
 // Job-board applications can't be replied to by email (the sender is the board).
 const isBoardSource = a => SOURCES.some(([, name]) => name === sourceOf(a));
+// Same pattern the server uses: addresses nobody reads.
+const isNoReply = a => /(no[-_.]?reply|do[-_.]?not[-_.]?reply|mailer-daemon|postmaster|bounce)/i
+  .test((/<([^<>]+)>/.exec(a.Sender || '') || [, a.Sender || ''])[1]);
+const replyBlockedReason = a => isBoardSource(a)
+  ? `Sent via ${sourceOf(a)}. Replies to a job board do not reach the employer, so reply there.`
+  : isNoReply(a) ? 'This email came from a no-reply address, so a reply would go nowhere.' : '';
 
 function refreshSourceOptions() {
   const sel = document.getElementById('sourceFilter');
@@ -452,8 +458,8 @@ function renderTable() {
       <td>${esc(sourceOf(a))}</td>
       <td>${esc(a['Applied Date'])}</td>
       <td style="white-space:nowrap">${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">email ↗</a>` : ''}${
-        !a['Thread ID'] ? '' : isBoardSource(a)
-          ? `<button class="link" disabled title="Sent via ${esc(sourceOf(a))}. Replies to a job board do not reach the employer, so reply there.">Reply</button>`
+        !a['Thread ID'] ? '' : replyBlockedReason(a)
+          ? `<button class="link" disabled title="${esc(replyBlockedReason(a))}">Reply</button>`
           : `<button class="link" data-reply="${esc(a['Thread ID'])}" data-co="${esc(a.Company)}">Reply</button>`}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="6" class="muted">${
