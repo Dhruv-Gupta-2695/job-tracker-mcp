@@ -241,7 +241,13 @@ def _guess_company(msg: EmailMessage) -> str:
         display_name = re.split(r"\s+via\s+", display_name, flags=re.IGNORECASE)[0].strip()
 
     if display_name and not display_name_is_email and not _looks_like_placeholder(display_name):
-        return display_name
+        # "Teachmint Hiring team" -> "Teachmint"
+        trimmed = re.sub(
+            r"\s+(?:hiring|recruiting|recruitment|talent(?: acquisition)?|careers?|hr|people)"
+            r"(?:\s+(?:team|department|ops))?\s*$",
+            "", display_name, flags=re.IGNORECASE,
+        ).strip()
+        return trimmed or display_name
 
     # No usable display name -- try to pull a company out of the subject
     # line before falling back to the sending domain.
@@ -283,6 +289,7 @@ def _guess_position(msg: EmailMessage) -> str:
                     return candidate[:100]
 
     patterns = [
+        r"for the (?:role|position) of (.+?)(?:\s+(?:through|at|with|via|on|in)\b|[.,\n]|$)",
         r"applying (?:to|for) the (.+?) (?:position|role)",
         r"application (?:to|for) the (.+?) (?:position|role)",
         r"for the (.+?) (?:position|role)",
@@ -310,6 +317,7 @@ def _guess_position(msg: EmailMessage) -> str:
         or lowered.strip(" !.") in _GENERIC_SUBJECTS
         or re.search(r"was accepted|successfully submitted|application was sent to", lowered)
         or any(p in lowered for p in STAGE_PROGRESS_PHRASES)
+        or not acceptable(subject)
     ):
         return UNKNOWN_POSITION
     return subject[:100]

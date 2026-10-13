@@ -143,6 +143,12 @@ def check_thread_updates() -> list[dict]:
             if msg.message_id in seen_ids:
                 continue
 
+            # A repeat receipt in the same thread ("Application Received -
+            # Thank you!") is not an outcome; its boilerplate ("reach out for
+            # further evaluation") must not be read as an interview.
+            if classifier.classify_new_message(msg).is_application_confirmation:
+                continue
+
             result = classifier.classify_update(msg)
             telegram_sent = False
             try:
