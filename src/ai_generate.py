@@ -71,7 +71,9 @@ def _call_model(prompt_text: str, max_tokens: int) -> str:
                 return (response.text or "").strip()
             except errors.APIError as exc:
                 last_exc = exc
-                if thinking_off and getattr(exc, "code", None) == 400 and "thinking" in str(exc).lower():
+                # Some models reject the "thinking off" setting with a vague
+                # 400 INVALID_ARGUMENT. Retry the same model once without it.
+                if thinking_off and getattr(exc, "code", None) == 400:
                     thinking_off = False
                     continue
                 if getattr(exc, "code", None) not in _RETRYABLE_CODES:
