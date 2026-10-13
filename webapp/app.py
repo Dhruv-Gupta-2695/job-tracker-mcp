@@ -126,6 +126,11 @@ def _reply_call(fn, *args):
         raise HTTPException(status_code=500, detail=f"Something went wrong: {exc}") from exc
 
 
+@app.get("/api/reply/context", dependencies=[Depends(require_auth)])
+def reply_context(thread_id: str):
+    return _reply_call(reply_mail.thread_summary, thread_id)
+
+
 @app.post("/api/reply/write", dependencies=[Depends(require_auth)])
 def reply_write(req: ReplyWriteRequest):
     return _reply_call(reply_mail.write_reply, req.thread_id, req.instructions)

@@ -111,6 +111,20 @@ def _reply_subject(subject: str) -> str:
     return subject if re.match(r"(?i)^re:", subject) else f"Re: {subject}"
 
 
+def thread_summary(thread_id: str) -> dict:
+    """The last message in the chain: subject, who it was from (you or them) and when."""
+    _application_for(thread_id)  # only tracked threads
+    _, me, messages = _load_thread(thread_id)
+    last = messages[-1]
+    addr = gmail_client.extract_email_address(last["from"]).lower()
+    return {
+        "subject": (last["subject"] or "").strip() or "(no subject)",
+        "direction": "sent" if addr == me else "received",
+        "date": datetime.fromtimestamp(last["ts"], timezone.utc).isoformat(),
+        "messages": len(messages),
+    }
+
+
 # ---------------------------------------------------------------- AI draft
 
 def _clip(text: str, n: int) -> str:

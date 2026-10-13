@@ -131,6 +131,7 @@
   <div class="modal">
     <h3 id="rmTitle">Reply</h3>
     <div class="muted" id="rmMeta"></div>
+    <div id="rmLast" style="margin-top:8px; font-size:13px;"></div>
 
     <div id="rmStepWrite">
       <label for="rmInstr">What do you want to say? (optional)</label>
@@ -284,6 +285,7 @@ document.querySelectorAll('nav button').forEach(btn => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    view.tab = btn.dataset.tab; saveView();
     if (btn.dataset.tab === 'history') loadHistory();
     if (btn.dataset.tab === 'prompts') loadPrompts();
   });
@@ -408,7 +410,20 @@ function donutSegments(counts) {
 }
 
 // ---- Rendering ----
-const view = { page: 1, pageSize: 25, status: 'all', query: '', days: 'all', source: 'all' };
+// ---- Small browser-side memory (localStorage; wrapped because it can throw) ----
+const mem = {
+  get(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch (_) { return fallback; } },
+  set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {} },
+  del(key) { try { localStorage.removeItem(key); } catch (_) {} },
+};
+const VIEW_KEY = 'jt.view', DRAFTS_KEY = 'jt.replyDrafts', OPEN_KEY = 'jt.openReply';
+const DRAFT_MAX = 40, DRAFT_MAX_AGE_MS = 30 * 24 * 3600 * 1000;
+
+const view = Object.assign(
+  { page: 1, pageSize: 25, status: 'all', query: '', days: 'all', source: 'all', tab: 'applications' },
+  mem.get(VIEW_KEY, {}),
+);
+const saveView = () => mem.set(VIEW_KEY, view);
 let allApps = [];
 
 function renderDashboard() {
@@ -447,6 +462,7 @@ function renderTable() {
   const filtered = filterApps(appsInRange(), view.status, view.query);
   const pg = paginate(filtered, view.page, view.pageSize);
   view.page = pg.page;
+  saveView();
 
   document.querySelector('#appsTable tbody').innerHTML = pg.items.map(a => {
     const link = safeUrl(a['Gmail Link']);
@@ -497,8 +513,18 @@ async function loadApplications() {
   document.getElementById('sheetLink').href = data.sheet_url || '#';
   allApps = (data.applications || []).slice().reverse();  // newest first
   refreshSourceOptions();
+  applyViewToControls();
   renderDashboard();
   renderTable();
+}
+
+// Put remembered filter choices back into the visible controls.
+function applyViewToControls() {
+  document.getElementById('pageSize').value = String(view.pageSize);
+  if (document.getElementById('pageSize').value !== String(view.pageSize)) view.pageSize = 25;
+  document.getElementById('appSearch').value = view.query || '';
+  document.querySelectorAll('#rangeBar .range').forEach(b =>
+    b.classList.toggle('active', String(view.days) === b.dataset.days));
 }
 
 // --- Reply with AI ---
@@ -515,17 +541,62 @@ function rmBusy(btn, busy, label) {
   if (label !== undefined) btn.dataset.label = btn.dataset.label || btn.textContent;
   btn.textContent = busy ? (label || 'Working...') : (btn.dataset.label || btn.textContent);
 }
+// Per-application reply drafts kept in this browser only, so a half-written or
+// AI-written reply is still there when you come back. Removed once sent.
+function draftsLoad() {
+  const now = Date.now();
+  const all = mem.get(DRAFTS_KEY, {});
+  const fresh = Object.fromEntries(Object.entries(all).filter(([, d]) => now - (d.ts || 0) < DRAFT_MAX_AGE_MS));
+  return fresh;
+}
+function draftSave(thread, patch) {
+  if (!thread) return;
+  const all = draftsLoad();
+  const cur = all[thread] || { body: '', instr: '' };
+  const next = Object.assign({}, cur, patch, { ts: Date.now() });
+  if (!next.body && !next.instr) delete all[thread]; else all[thread] = next;
+  // keep the store small: only the newest DRAFT_MAX drafts
+  const keep = Object.entries(all).sort((a, b) => b[1].ts - a[1].ts).slice(0, DRAFT_MAX);
+  mem.set(DRAFTS_KEY, Object.fromEntries(keep));
+}
+function draftDelete(thread) {
+  const all = draftsLoad(); delete all[thread]; mem.set(DRAFTS_KEY, all);
+}
+
+function rmShowLast(info) {
+  const el = rm.el('rmLast');
+  if (!info) { el.textContent = ''; return; }
+  const when = info.date ? new Date(info.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+  const tag = info.direction === 'sent' ? 'You sent' : 'You received';
+  el.innerHTML = `<span class="muted">Last message in this chain:</span> <strong>${esc(tag)}</strong> · ${esc(info.subject)}`
+    + (when ? ` <span class="muted">· ${esc(when)}</span>` : '');
+}
+
 function rmOpen(threadId, company) {
-  rm.thread = threadId;
+  rm.thread = threadId; rm.company = company;
   rm.el('rmTitle').textContent = `Reply to ${company || 'employer'}`;
   rm.el('rmMeta').textContent = 'The recipient is taken from the email thread itself and cannot be changed here.';
-  rm.el('rmInstr').value = ''; rm.el('rmBody').value = '';
+  const saved = draftsLoad()[threadId] || {};
+  rm.el('rmInstr').value = saved.instr || '';
+  rm.el('rmBody').value = saved.body || '';
+  if (saved.body) rm.el('rmMeta').textContent = 'Restored your saved reply for this application. ' + rm.el('rmMeta').textContent;
   rm.el('rmStepWrite').style.display = ''; rm.el('rmStepConfirm').style.display = 'none';
   rm.el('rmReview').style.display = rm.canSend ? '' : 'none';
+  rm.el('rmLast').textContent = 'Loading last message...';
   rmMsg('', '');
   rm.el('replyModal').classList.add('open');
+  mem.set(OPEN_KEY, { thread: threadId, company });
+  api('/api/reply/context?thread_id=' + encodeURIComponent(threadId))
+    .then(info => { if (rm.thread === threadId) rmShowLast(info); })
+    .catch(() => { if (rm.thread === threadId) rm.el('rmLast').textContent = ''; });
 }
-const rmClose = () => { if (!rm.busy) rm.el('replyModal').classList.remove('open'); };
+const rmClose = () => {
+  if (rm.busy) return;
+  rm.el('replyModal').classList.remove('open');
+  mem.del(OPEN_KEY);
+};
+rm.el('rmBody').addEventListener('input', e => draftSave(rm.thread, { body: e.target.value }));
+rm.el('rmInstr').addEventListener('input', e => draftSave(rm.thread, { instr: e.target.value }));
 
 document.querySelector('#appsTable tbody').addEventListener('click', e => {
   const b = e.target.closest('button[data-reply]');
@@ -539,6 +610,7 @@ rm.el('rmWrite').addEventListener('click', async e => {
   try {
     const r = await postJson('/api/reply/write', { thread_id: rm.thread, instructions: rm.el('rmInstr').value });
     rm.el('rmBody').value = r.body;
+    draftSave(rm.thread, { body: r.body });
     rm.el('rmMeta').textContent = `To: ${r.to}  ·  Subject: ${r.subject}  ·  Review and edit before using it.`;
   } catch (err) { rmMsg(err.message); }
   rmBusy(btn, false);
@@ -575,6 +647,11 @@ rm.el('rmSend').addEventListener('click', async e => {
   try {
     const r = await postJson('/api/reply/send', { thread_id: rm.thread, body: rm.el('rmPreview').textContent, confirm_token: rmToken });
     rmToken = '';
+    // Sent: erase the stored AI/typed body so nothing stale is kept in the browser.
+    draftDelete(rm.thread);
+    rm.el('rmBody').value = ''; rm.el('rmPreview').textContent = ''; rm.el('rmInstr').value = '';
+    mem.del(OPEN_KEY);
+    api('/api/reply/context?thread_id=' + encodeURIComponent(rm.thread)).then(rmShowLast).catch(() => {});
     rm.el('rmStepConfirm').style.display = 'none';
     rmMsg('', r.already_sent ? `Already sent to ${r.to}.` : `Sent to ${r.to}.`);
   } catch (err) { rmMsg(err.message); }
@@ -714,7 +791,18 @@ async function initScanButton() {
   });
 }
 
-loadApplications();
+// Come back to where you were: same tab, same filters/page (restored above),
+// and the reply window reopened if you were in the middle of one.
+loadApplications().then(() => {
+  if (view.tab && view.tab !== 'applications') {
+    const tabBtn = document.querySelector(`nav button[data-tab="${view.tab}"]`);
+    if (tabBtn) tabBtn.click();
+  }
+  const open = mem.get(OPEN_KEY, null);
+  if (open && open.thread && allApps.some(a => a['Thread ID'] === open.thread && !replyBlockedReason(a))) {
+    rmOpen(open.thread, open.company);
+  } else if (open) { mem.del(OPEN_KEY); }
+}).catch(() => {});
 loadCv();
 initScanButton();
 
