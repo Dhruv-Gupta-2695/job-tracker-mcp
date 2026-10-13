@@ -179,6 +179,21 @@ def _position_before_company(body: str, company: str) -> str:
     return match.group(1).strip() if match else ""
 
 
+def _position_bullet_before_company(body: str, company: str) -> str:
+    """Wellfound plain-text layout:
+         * Technical Product Growth Manager
+         <https://wellfound.com/jobs/...>
+         * The Date Crew · Delhi · Remote
+         * ₹1000-1200K
+    The title is the bullet whose next bullet starts with "<Company> ·"; an
+    angle-bracketed link may sit between them."""
+    match = re.search(
+        r"[*•]\s*([^\n<]{3,100}?)\s*\n(?:\s*<[^>]*>\s*\n)?\s*[*•]\s*" + re.escape(company) + r"\s*[·•|]",
+        body, re.IGNORECASE,
+    )
+    return match.group(1).strip() if match else ""
+
+
 def _position_after_sent_heading(body: str, company: str) -> str:
     """LinkedIn layout:
         Your application was sent to <Company>
@@ -190,7 +205,9 @@ def _position_after_sent_heading(body: str, company: str) -> str:
     HTML flattened to spaces."""
     co = re.escape(company)
     match = re.search(
-        r"application was sent to\s+" + co + r"[:\s]+(.+?)\s+(?:" + co + r"\s*(?:[·•|]|&middot;|&#183;)|applied on\b)",
+        r"application was sent to\s+" + co + r"[:\s]+(.+?)(?:\s+" + co + r"\s*(?:[·•|]|&middot;|&#183;)"
+        # Plain-text layout: company alone on the next line, then the city.
+        r"|\s*\n\s*" + co + r"\s*(?:\n|$)|\s+applied on\b|\s+view job\b)",
         body, re.IGNORECASE | re.DOTALL,
     )
     if not match:
@@ -267,7 +284,28 @@ def _guess_company(msg: EmailMessage) -> str:
     return "Unknown"
 
 
+def _clean_position(candidate: str, company: str) -> str:
+    """Drop link text ("View job") and anything from the company name on:
+    "Associate Product Owner Teamware Solutions Bangalore View job" ->
+    "Associate Product Owner"."""
+    text = re.sub(r"\s+", " ", candidate).strip()
+    text = re.sub(r"\s*\bview job\b.*$", "", text, flags=re.IGNORECASE).strip()
+    if company and company != "Unknown":
+        idx = text.lower().find(company.lower())
+        if idx >= 4:
+            text = text[:idx].strip(" -–·|,:")
+    return text
+
+
 def _guess_position(msg: EmailMessage) -> str:
+    result = _guess_position_raw(msg)
+    if result == UNKNOWN_POSITION:
+        return result
+    cleaned = _clean_position(result, _guess_company(msg))
+    return cleaned[:100] if len(cleaned) >= 4 else UNKNOWN_POSITION
+
+
+def _guess_position_raw(msg: EmailMessage) -> str:
     # Ordered most-specific first, since the generic "application to/for X"
     # pattern would otherwise grab a company name out of the subject line
     # before more precise job-title patterns get a chance to match the body.
@@ -283,7 +321,8 @@ def _guess_position(msg: EmailMessage) -> str:
     if is_shared_board_sender(msg.sender):
         board_company = _company_from_board_subject(msg.subject)
         if board_company:
-            for finder in (_position_after_sent_heading, _position_before_company):
+            for finder in (_position_bullet_before_company, _position_after_sent_heading,
+                           _position_before_company):
                 candidate = finder(msg.body, board_company)
                 if candidate and acceptable(candidate):
                     return candidate[:100]

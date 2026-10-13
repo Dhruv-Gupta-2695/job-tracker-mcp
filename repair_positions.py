@@ -36,6 +36,8 @@ def _row_needs_repair(company: str, position: str) -> bool:
         or " via " in comp
         or re.search(r"\b(hiring|recruiting|recruitment|talent|careers?|hr)(\s+team)?$", comp)
         or re.search(r"\b(received|thank you)\b", pos)
+        or "view job" in pos
+        or (len(comp) > 3 and comp in pos)
     )
 
 
