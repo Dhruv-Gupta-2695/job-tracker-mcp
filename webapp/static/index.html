@@ -81,6 +81,17 @@
   .donut .num { font-size: 8px; font-weight: 600; fill: var(--text); }
   .donut .sub { font-size: 2.6px; fill: var(--muted); }
   .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; flex: 1; min-width: 280px; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: none; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; width: 100%; max-width: 680px; max-height: 92vh; overflow: auto; padding: 20px; }
+  .modal h3 { margin: 0 0 4px; }
+  .modal label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+  .modal .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .modal .err { color: var(--red); font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
+  .modal .ok { color: var(--green); font-size: 13px; margin-top: 10px; }
+  .modal pre.preview { white-space: pre-wrap; background: #0c0e12; border: 1px solid var(--border); border-radius: 6px; padding: 12px; font: 13px/1.5 inherit; }
+  button.link { background: none; border: 1px solid var(--border); color: var(--accent); border-radius: 6px; padding: 2px 8px; font-size: 12px; cursor: pointer; margin-left: 6px; }
+  button.link:hover { border-color: var(--accent); }
   button.btn.range { padding: 6px 12px; font-size: 13px; }
   button.btn.range.active { background: var(--accent); border-color: var(--accent); }
   button.tile {
@@ -113,6 +124,41 @@
     <a class="muted" id="sheetLink" href="#" target="_blank" style="margin-left:8px; align-self:center;">Open Sheet ↗</a>
   </div>
 </header>
+
+<div class="modal-bg" id="replyModal">
+  <div class="modal">
+    <h3 id="rmTitle">Reply</h3>
+    <div class="muted" id="rmMeta"></div>
+
+    <div id="rmStepWrite">
+      <label for="rmInstr">What do you want to say? (optional)</label>
+      <input type="text" id="rmInstr" placeholder="e.g. ask for an update, accept the interview slot, ask about next steps" />
+      <div class="row"><button class="btn" id="rmWrite">Write with AI</button></div>
+      <label for="rmBody">Reply</label>
+      <textarea id="rmBody" style="min-height:200px" placeholder="Click 'Write with AI', or type your own reply..."></textarea>
+      <div class="row">
+        <button class="btn secondary" id="rmDraft">Save to Gmail drafts</button>
+        <button class="btn" id="rmReview" style="display:none">Review &amp; send</button>
+        <button class="btn secondary" id="rmClose">Close</button>
+      </div>
+    </div>
+
+    <div id="rmStepConfirm" style="display:none">
+      <label>To</label><div id="rmTo"></div>
+      <label>Subject</label><div id="rmSubject"></div>
+      <label>Message (exactly what will be sent)</label>
+      <pre class="preview" id="rmPreview"></pre>
+      <div class="muted" id="rmLeft"></div>
+      <div class="row">
+        <button class="btn" id="rmSend">Confirm &amp; send</button>
+        <button class="btn secondary" id="rmBack">Back to edit</button>
+      </div>
+    </div>
+
+    <div class="err" id="rmErr"></div>
+    <div class="ok" id="rmOk"></div>
+  </div>
+</div>
 
 <nav>
   <button data-tab="applications" class="active">Applications</button>
@@ -363,7 +409,8 @@ function renderTable() {
       <td>${esc(a.Position)}</td>
       <td>${badge(a.Status)}</td>
       <td>${esc(a['Applied Date'])}</td>
-      <td>${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">email ↗</a>` : ''}</td>
+      <td style="white-space:nowrap">${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">email ↗</a>` : ''}${
+        a['Thread ID'] ? `<button class="link" data-reply="${esc(a['Thread ID'])}" data-co="${esc(a.Company)}">Reply</button>` : ''}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="5" class="muted">${
     allApps.length ? 'No applications match your filter.' : 'No applications tracked yet.'}</td></tr>`;
@@ -399,6 +446,87 @@ async function loadApplications() {
   renderDashboard();
   renderTable();
 }
+
+// --- Reply with AI ---
+const rm = {
+  el: id => document.getElementById(id),
+  thread: null, canSend: false, busy: false,
+};
+const postJson = (path, payload) => api(path, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+});
+function rmMsg(err, ok) { rm.el('rmErr').textContent = err || ''; rm.el('rmOk').textContent = ok || ''; }
+function rmBusy(btn, busy, label) {
+  rm.busy = busy; btn.disabled = busy;
+  if (label !== undefined) btn.dataset.label = btn.dataset.label || btn.textContent;
+  btn.textContent = busy ? (label || 'Working...') : (btn.dataset.label || btn.textContent);
+}
+function rmOpen(threadId, company) {
+  rm.thread = threadId;
+  rm.el('rmTitle').textContent = `Reply to ${company || 'employer'}`;
+  rm.el('rmMeta').textContent = 'The recipient is taken from the email thread itself and cannot be changed here.';
+  rm.el('rmInstr').value = ''; rm.el('rmBody').value = '';
+  rm.el('rmStepWrite').style.display = ''; rm.el('rmStepConfirm').style.display = 'none';
+  rm.el('rmReview').style.display = rm.canSend ? '' : 'none';
+  rmMsg('', '');
+  rm.el('replyModal').classList.add('open');
+}
+const rmClose = () => { if (!rm.busy) rm.el('replyModal').classList.remove('open'); };
+
+document.querySelector('#appsTable tbody').addEventListener('click', e => {
+  const b = e.target.closest('button[data-reply]');
+  if (b) rmOpen(b.dataset.reply, b.dataset.co);
+});
+rm.el('rmClose').addEventListener('click', rmClose);
+rm.el('replyModal').addEventListener('click', e => { if (e.target.id === 'replyModal') rmClose(); });
+
+rm.el('rmWrite').addEventListener('click', async e => {
+  const btn = e.currentTarget; rmMsg('', ''); rmBusy(btn, true, 'Writing...');
+  try {
+    const r = await postJson('/api/reply/write', { thread_id: rm.thread, instructions: rm.el('rmInstr').value });
+    rm.el('rmBody').value = r.body;
+    rm.el('rmMeta').textContent = `To: ${r.to}  ·  Subject: ${r.subject}  ·  Review and edit before using it.`;
+  } catch (err) { rmMsg(err.message); }
+  rmBusy(btn, false);
+});
+
+rm.el('rmDraft').addEventListener('click', async e => {
+  const btn = e.currentTarget; rmMsg('', ''); rmBusy(btn, true, 'Saving...');
+  try {
+    const r = await postJson('/api/reply/draft', { thread_id: rm.thread, body: rm.el('rmBody').value });
+    rmMsg('', `Saved to Gmail drafts (to ${r.to}). Open Gmail to review and send it.`);
+  } catch (err) { rmMsg(err.message); }
+  rmBusy(btn, false);
+});
+
+let rmToken = '';
+rm.el('rmReview').addEventListener('click', async e => {
+  const btn = e.currentTarget; rmMsg('', ''); rmBusy(btn, true, 'Checking...');
+  try {
+    const r = await postJson('/api/reply/prepare', { thread_id: rm.thread, body: rm.el('rmBody').value });
+    rmToken = r.confirm_token;
+    rm.el('rmBody').value = r.body;
+    rm.el('rmTo').textContent = r.to; rm.el('rmSubject').textContent = r.subject;
+    rm.el('rmPreview').textContent = r.body;
+    rm.el('rmLeft').textContent = `${r.sends_left_today} send(s) left today. You will also get a Telegram alert when it goes out.`;
+    rm.el('rmStepWrite').style.display = 'none'; rm.el('rmStepConfirm').style.display = '';
+  } catch (err) { rmMsg(err.message); }
+  rmBusy(btn, false);
+});
+rm.el('rmBack').addEventListener('click', () => {
+  rm.el('rmStepConfirm').style.display = 'none'; rm.el('rmStepWrite').style.display = ''; rmMsg('', '');
+});
+rm.el('rmSend').addEventListener('click', async e => {
+  const btn = e.currentTarget; rmMsg('', ''); rmBusy(btn, true, 'Sending...');
+  try {
+    const r = await postJson('/api/reply/send', { thread_id: rm.thread, body: rm.el('rmPreview').textContent, confirm_token: rmToken });
+    rmToken = '';
+    rm.el('rmStepConfirm').style.display = 'none';
+    rmMsg('', r.already_sent ? `Already sent to ${r.to}.` : `Sent to ${r.to}.`);
+  } catch (err) { rmMsg(err.message); }
+  rmBusy(btn, false);
+});
+(async () => { try { rm.canSend = !!(await api('/api/config')).can_send_email; } catch (_) {} })();
 
 // --- CV Manager ---
 async function loadCv() {

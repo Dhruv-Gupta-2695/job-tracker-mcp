@@ -54,6 +54,17 @@ def _generate(prompt_name: str, core_cv: str, job_description: str) -> str:
     return (response.text or "").strip()
 
 
+def generate_text(prompt_text: str, max_tokens: int = 800) -> str:
+    """One-off generation from a fully built prompt (used for email replies)."""
+    client = _client()
+    response = client.models.generate_content(
+        model=config.AI_MODEL,
+        contents=prompt_text,
+        config=genai.types.GenerateContentConfig(max_output_tokens=max_tokens),
+    )
+    return (response.text or "").strip()
+
+
 def tailor_cv(core_cv: str, job_description: str) -> str:
     """Returns the tailored CV as plain text (ready for pdf_export.py)."""
     return _generate("cv_tailor", core_cv, job_description)
