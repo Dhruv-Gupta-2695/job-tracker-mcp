@@ -92,6 +92,8 @@
   .modal pre.preview { white-space: pre-wrap; background: #0c0e12; border: 1px solid var(--border); border-radius: 6px; padding: 12px; font: 13px/1.5 inherit; }
   button.link { background: none; border: 1px solid var(--border); color: var(--accent); border-radius: 6px; padding: 2px 8px; font-size: 12px; cursor: pointer; margin-left: 6px; }
   button.link:hover { border-color: var(--accent); }
+  button.link:disabled { color: var(--muted); opacity: .45; cursor: not-allowed; }
+  button.link:disabled:hover { border-color: var(--border); }
   button.btn.range { padding: 6px 12px; font-size: 13px; }
   button.btn.range.active { background: var(--accent); border-color: var(--accent); }
   button.tile {
@@ -188,6 +190,9 @@
       <h2>Applications</h2>
       <div class="toolbar">
         <input type="text" id="appSearch" placeholder="Search company or position..." />
+        <select id="sourceFilter" aria-label="Filter by source">
+          <option value="all">All sources</option>
+        </select>
         <select id="pageSize" aria-label="Rows per page">
           <option value="10">10 per page</option>
           <option value="25" selected>25 per page</option>
@@ -196,7 +201,7 @@
         </select>
       </div>
       <table id="appsTable">
-        <thead><tr><th>Company</th><th>Position</th><th>Status</th><th>Applied</th><th></th></tr></thead>
+        <thead><tr><th>Company</th><th>Position</th><th>Status</th><th>Source</th><th>Applied</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
       <div class="pager">
@@ -330,9 +335,45 @@ function inRange(a, days) {
 
 function appsInRange() { return allApps.filter(a => inRange(a, view.days)); }
 
+// Where the application was made, worked out from who sent the confirmation.
+const SOURCES = [
+  ['linkedin.com', 'LinkedIn'], ['wellfound.com', 'Wellfound'], ['indeed.com', 'Indeed'],
+  ['naukri.com', 'Naukri'], ['glassdoor.com', 'Glassdoor'], ['instahyre.com', 'Instahyre'],
+  ['cutshort.io', 'Cutshort'], ['foundit.in', 'Foundit'], ['monster.com', 'Monster'],
+  ['hirist.com', 'Hirist'], ['ziprecruiter.com', 'ZipRecruiter'], ['otta.com', 'Otta'],
+];
+const ATS = [
+  'greenhouse.io', 'lever.co', 'myworkday.com', 'workday.com', 'icims.com', 'smartrecruiters.com',
+  'taleo.net', 'jobvite.com', 'ashbyhq.com', 'breezy.hr', 'bamboohr.com', 'successfactors.com',
+  'workable.com', 'workablemail.com', 'recruitee.com', 'recruitee-mail.com', 'brassring.com',
+  'ultipro.com', 'darwinbox.in', 'darwinbox.com', 'kekamail.com',
+];
+function sourceOf(a) {
+  const m = /@([^>\s]+)/.exec(a.Sender || '');
+  const domain = (m ? m[1] : '').toLowerCase();
+  const hit = SOURCES.find(([d]) => domain === d || domain.endsWith('.' + d));
+  if (hit) return hit[1];
+  return ATS.some(d => domain === d || domain.endsWith('.' + d)) ? 'Company portal (ATS)' : 'Company portal';
+}
+
+// Job-board applications can't be replied to by email (the sender is the board).
+const isBoardSource = a => SOURCES.some(([, name]) => name === sourceOf(a));
+
+function refreshSourceOptions() {
+  const sel = document.getElementById('sourceFilter');
+  const counts = {};
+  allApps.forEach(a => { const s = sourceOf(a); counts[s] = (counts[s] || 0) + 1; });
+  const keep = view.source;
+  sel.innerHTML = '<option value="all">All sources</option>' + Object.keys(counts).sort()
+    .map(s => `<option value="${esc(s)}">${esc(s)} (${counts[s]})</option>`).join('');
+  sel.value = counts[keep] ? keep : 'all';
+  view.source = sel.value;
+}
+
 function filterApps(apps, status, query) {
   const q = (query || '').trim().toLowerCase();
   return apps.filter(a =>
+    (view.source === 'all' || sourceOf(a) === view.source) &&
     (status === 'all' || statusKey(a.Status) === status) &&
     (!q || `${a.Company || ''} ${a.Position || ''}`.toLowerCase().includes(q)));
 }
@@ -361,7 +402,7 @@ function donutSegments(counts) {
 }
 
 // ---- Rendering ----
-const view = { page: 1, pageSize: 25, status: 'all', query: '', days: 'all' };
+const view = { page: 1, pageSize: 25, status: 'all', query: '', days: 'all', source: 'all' };
 let allApps = [];
 
 function renderDashboard() {
@@ -408,11 +449,14 @@ function renderTable() {
       <td>${esc(a.Company)}</td>
       <td>${esc(a.Position)}</td>
       <td>${badge(a.Status)}</td>
+      <td>${esc(sourceOf(a))}</td>
       <td>${esc(a['Applied Date'])}</td>
       <td style="white-space:nowrap">${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">email ↗</a>` : ''}${
-        a['Thread ID'] ? `<button class="link" data-reply="${esc(a['Thread ID'])}" data-co="${esc(a.Company)}">Reply</button>` : ''}</td>
+        !a['Thread ID'] ? '' : isBoardSource(a)
+          ? `<button class="link" disabled title="Sent via ${esc(sourceOf(a))}. Replies to a job board do not reach the employer, so reply there.">Reply</button>`
+          : `<button class="link" data-reply="${esc(a['Thread ID'])}" data-co="${esc(a.Company)}">Reply</button>`}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="5" class="muted">${
+  }).join('') || `<tr><td colspan="6" class="muted">${
     allApps.length ? 'No applications match your filter.' : 'No applications tracked yet.'}</td></tr>`;
 
   const filterNote = view.status !== 'all' ? ` · filtered by "${esc(view.status)}"` : '';
@@ -435,6 +479,9 @@ document.getElementById('nextPage').addEventListener('click', () => { view.page+
 document.getElementById('pageSize').addEventListener('change', e => {
   view.pageSize = parseInt(e.target.value, 10) || 25; view.page = 1; renderTable();
 });
+document.getElementById('sourceFilter').addEventListener('change', e => {
+  view.source = e.target.value; view.page = 1; renderDashboard(); renderTable();
+});
 document.getElementById('appSearch').addEventListener('input', e => {
   view.query = e.target.value; view.page = 1; renderTable();
 });
@@ -443,6 +490,7 @@ async function loadApplications() {
   const data = await api('/api/applications');
   document.getElementById('sheetLink').href = data.sheet_url || '#';
   allApps = (data.applications || []).slice().reverse();  // newest first
+  refreshSourceOptions();
   renderDashboard();
   renderTable();
 }
