@@ -23,38 +23,65 @@ def _client() -> genai.Client:
             "(no credit card needed for the free tier) and add it to your "
             "environment."
         )
-    return genai.Client(api_key=config.GEMINI_API_KEY)
+    # A hard per-request timeout, so one stuck call can never leave the UI spinning.
+    return genai.Client(
+        api_key=config.GEMINI_API_KEY,
+        http_options=genai.types.HttpOptions(timeout=REQUEST_TIMEOUT_MS),
+    )
 
 
 FALLBACK_MODEL = "gemini-flash-lite-latest"
-_RETRY_DELAYS = (2, 5)  # seconds before 2nd and 3rd attempt on the main model
+_RETRY_DELAYS = (2,)  # one quick retry on the main model, then the fallback model
+REQUEST_TIMEOUT_MS = 20_000  # no single attempt may hang longer than this
+_RETRYABLE_CODES = (429, 500, 503, 504)
+
+
+def _config_for(model: str, max_tokens: int, thinking_off: bool):
+    kwargs = {"max_output_tokens": max_tokens}
+    # Flash models "think" before answering: slow, and it eats the token budget.
+    # Short emails and CVs do not need it.
+    if thinking_off and "flash" in model:
+        kwargs["thinking_config"] = genai.types.ThinkingConfig(thinking_budget=0)
+    return genai.types.GenerateContentConfig(**kwargs)
 
 
 def _call_model(prompt_text: str, max_tokens: int) -> str:
-    """Calls Gemini, retrying temporary overloads (503/429/500/504) and then
-    falling back to a lighter model. Raises RuntimeError with a plain message
-    if it is still unavailable, so the UI can show something useful."""
+    """Calls Gemini with a timeout, retrying temporary failures (overload,
+    timeouts) once and then falling back to a lighter model. Raises
+    RuntimeError with a plain message if it is still unavailable."""
     import time
     from google.genai import errors
 
     client = _client()
-    cfg = genai.types.GenerateContentConfig(max_output_tokens=max_tokens)
     attempts = [(config.AI_MODEL, 0)] + [(config.AI_MODEL, d) for d in _RETRY_DELAYS]
     if FALLBACK_MODEL != config.AI_MODEL:
         attempts.append((FALLBACK_MODEL, 1))
+
     last_exc: Exception | None = None
     for model, delay in attempts:
         if delay:
             time.sleep(delay)
-        try:
-            response = client.models.generate_content(model=model, contents=prompt_text, config=cfg)
-            return (response.text or "").strip()
-        except errors.APIError as exc:
-            last_exc = exc
-            if getattr(exc, "code", None) not in (429, 500, 503, 504):
-                raise
+        thinking_off = True
+        for _ in range(2):  # 2nd pass only if the model rejects the thinking setting
+            try:
+                response = client.models.generate_content(
+                    model=model, contents=prompt_text,
+                    config=_config_for(model, max_tokens, thinking_off),
+                )
+                return (response.text or "").strip()
+            except errors.APIError as exc:
+                last_exc = exc
+                if thinking_off and getattr(exc, "code", None) == 400 and "thinking" in str(exc).lower():
+                    thinking_off = False
+                    continue
+                if getattr(exc, "code", None) not in _RETRYABLE_CODES:
+                    raise
+                break
+            except Exception as exc:  # noqa: BLE001 - network timeouts come from httpx, not genai
+                last_exc = exc
+                break
     raise RuntimeError(
-        "Gemini is overloaded right now (Google-side, usually brief). I retried and "
+        "Gemini is slow or overloaded right now (Google-side, usually brief). I retried and "
         "tried a lighter model too. Wait a minute and click again."
     ) from last_exc
 

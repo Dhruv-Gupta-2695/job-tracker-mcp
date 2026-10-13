@@ -532,8 +532,8 @@ const rm = {
   el: id => document.getElementById(id),
   thread: null, canSend: false, busy: false,
 };
-const postJson = (path, payload) => api(path, {
-  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+const postJson = (path, payload, signal) => api(path, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal,
 });
 function rmMsg(err, ok) { rm.el('rmErr').textContent = err || ''; rm.el('rmOk').textContent = ok || ''; }
 function rmBusy(btn, busy, label) {
@@ -607,12 +607,21 @@ rm.el('replyModal').addEventListener('click', e => { if (e.target.id === 'replyM
 
 rm.el('rmWrite').addEventListener('click', async e => {
   const btn = e.currentTarget; rmMsg('', ''); rmBusy(btn, true, 'Writing...');
+  const started = Date.now();
+  const tick = setInterval(() => { btn.textContent = `Writing... ${Math.round((Date.now() - started) / 1000)}s`; }, 1000);
+  const ctl = new AbortController();
+  const stop = setTimeout(() => ctl.abort(), 90000);
   try {
-    const r = await postJson('/api/reply/write', { thread_id: rm.thread, instructions: rm.el('rmInstr').value });
+    const r = await postJson('/api/reply/write', { thread_id: rm.thread, instructions: rm.el('rmInstr').value }, ctl.signal);
     rm.el('rmBody').value = r.body;
     draftSave(rm.thread, { body: r.body });
     rm.el('rmMeta').textContent = `To: ${r.to}  ·  Subject: ${r.subject}  ·  Review and edit before using it.`;
-  } catch (err) { rmMsg(err.message); }
+  } catch (err) {
+    rmMsg(err.name === 'AbortError'
+      ? 'This took more than 90 seconds, so I stopped waiting. The server may have been asleep or Gemini is slow. Try again.'
+      : err.message);
+  }
+  clearInterval(tick); clearTimeout(stop);
   rmBusy(btn, false);
 });
 
