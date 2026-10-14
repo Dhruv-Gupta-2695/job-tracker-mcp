@@ -180,6 +180,10 @@ def add_application(
     return True
 
 
+# A vague later email ("update") must never wipe out a real outcome.
+PROTECTED_STATUSES = {"interview", "offer", "rejected"}
+
+
 def update_application(
     thread_id: str, status: str, summary: str, updated_at: datetime, telegram_sent: bool,
 ) -> None:
@@ -189,7 +193,11 @@ def update_application(
     if row_num is None:
         return
 
-    row[COLUMNS.index("Status")] = status
+    status_col = COLUMNS.index("Status")
+    current = row[status_col].strip().lower()
+    if status.strip().lower() == "update" and current in PROTECTED_STATUSES:
+        status = current  # keep the stronger status; the summary/date below still refresh
+    row[status_col] = status
     row[COLUMNS.index("Last Update Date")] = updated_at.strftime("%Y-%m-%d %H:%M")
     row[COLUMNS.index("Last Update Summary")] = summary[:MAX_CELL_CHARS]
     row[COLUMNS.index("Telegram Sent")] = "Yes" if telegram_sent else "No"

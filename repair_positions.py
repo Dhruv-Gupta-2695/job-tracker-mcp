@@ -37,6 +37,7 @@ def _row_needs_repair(company: str, position: str) -> bool:
         or re.search(r"\b(hiring|recruiting|recruitment|talent|careers?|hr)(\s+team)?$", comp)
         or re.search(r"\b(received|thank you)\b", pos)
         or "view job" in pos
+        or any(p in pos for p in classifier.STAGE_PROGRESS_PHRASES)
         or (len(comp) > 3 and comp in pos)
     )
 
@@ -75,6 +76,23 @@ def repair(service, apply: bool, pause: float = 1.1) -> dict:
 
         result = classifier.classify_new_message(messages[0])
         if not result.is_application_confirmation:
+            # The row was created from a stage-progress email ("you're through
+            # to the assignment stage"): keep the company, blank the pasted
+            # subject, and record the progress as the status.
+            if classifier.is_stage_progress_email(messages[0]):
+                status_col = tracker.COLUMNS.index("Status")
+                old_status = row[status_col]
+                new_status = "interview" if old_status in ("applied", "update") else old_status
+                new_position = classifier.UNKNOWN_POSITION
+                if (company, new_position, new_status) != (company, position, old_status):
+                    log.info("%s: %r / %r / %s  ->  %r / %r / %s", "FIX" if apply else "WOULD FIX",
+                             company, position, old_status, company, new_position, new_status)
+                    changed += 1
+                    if apply:
+                        fixed = list(row)
+                        fixed[position_col], fixed[status_col] = new_position, new_status
+                        sheets_client.update_row("Applications", i + 2, fixed)
+                        time.sleep(pause)
             continue
 
         new_company = result.company or company
