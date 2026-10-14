@@ -246,8 +246,23 @@ def generate(req: GenerateRequest):
             "generated": None,
         }
 
-    cv_text = ai_generate.tailor_cv(core_cv, req.job_description)
-    cover_letter_text = ai_generate.generate_cover_letter(core_cv, req.job_description)
+    # The two Gemini calls are independent, so run them side by side: about half the wait,
+    # which keeps the request under Render's proxy timeout.
+    from concurrent.futures import ThreadPoolExecutor
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            cv_future = pool.submit(ai_generate.tailor_cv, core_cv, req.job_description)
+            cl_future = pool.submit(ai_generate.generate_cover_letter, core_cv, req.job_description)
+            cv_text = cv_future.result()
+            cover_letter_text = cl_future.result()
+    except (RuntimeError, ValueError) as exc:
+        print(f"[generate] AI step failed: {exc}", flush=True)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        print(f"[generate] unexpected AI error: {exc!r}", flush=True)
+        raise HTTPException(status_code=500, detail=f"AI step failed: {type(exc).__name__}: {exc}") from exc
+    if not cv_text.strip() or not cover_letter_text.strip():
+        raise HTTPException(status_code=400, detail="Gemini returned an empty answer. Try again in a minute.")
 
     safe_company = "".join(c for c in req.company if c.isalnum() or c in " -_") or "Company"
     cv_pdf = pdf_export.cv_to_pdf(config.CANDIDATE_NAME, cv_text)
