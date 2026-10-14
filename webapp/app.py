@@ -73,6 +73,31 @@ def require_auth(credentials: HTTPBasicCredentials = Depends(security)) -> None:
         raise HTTPException(status_code=401, detail="Incorrect password", headers={"WWW-Authenticate": "Basic"})
 
 
+def _drive_guard(fn, *args, **kwargs):
+    """Run a Drive-backed call and turn Google's errors into a message you can act on
+    (an unhandled error would otherwise reach the browser as a blank 500)."""
+    from googleapiclient.errors import HttpError
+    try:
+        return fn(*args, **kwargs)
+    except HttpError as exc:
+        text = str(exc)
+        print(f"[drive] HttpError: {text}", flush=True)
+        low = text.lower()
+        if "insufficient" in low and ("scope" in low or "permission" in low):
+            detail = ("The Google login on this server has no Drive permission. Re-run the Google login "
+                      "locally (delete token.json, run python3 run_once.py), then paste the new token.json "
+                      "into GMAIL_TOKEN_JSON on Render and in GitHub secrets.")
+        elif "accessnotconfigured" in low or "has not been used" in low or "is disabled" in low:
+            detail = ("The Google Drive API is switched off for your Google Cloud project. Enable it at "
+                      "console.cloud.google.com > APIs & Services > Library > Google Drive API, wait a minute, retry.")
+        else:
+            detail = f"Google Drive refused the request: {getattr(exc, 'reason', None) or text[:300]}"
+        raise HTTPException(status_code=400, detail=detail) from exc
+    except Exception as exc:  # noqa: BLE001
+        print(f"[drive] unexpected error: {exc!r}", flush=True)
+        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}") from exc
+
+
 def _extract_text_from_upload(filename: str, content: bytes) -> str:
     lower = filename.lower()
     if lower.endswith(".pdf"):
@@ -155,14 +180,28 @@ def reply_send(req: ReplySendRequest):
 
 @app.get("/api/cv", dependencies=[Depends(require_auth)])
 def get_cv():
-    return {"has_cv": cv_store.has_core_cv(), "text": cv_store.get_core_cv()}
+    def build():
+        has_cv = cv_store.has_core_cv()
+        return {
+            "has_cv": has_cv,
+            "text": cv_store.get_core_cv(),
+            # Only the latest upload is kept (a new one replaces the old in place).
+            "filename": (tracker.get_state_value("core_cv_filename") or "") if has_cv else "",
+            "uploaded_at": (tracker.get_state_value("core_cv_uploaded_at") or "") if has_cv else "",
+        }
+    return _drive_guard(build)
 
 
 @app.post("/api/cv", dependencies=[Depends(require_auth)])
 def upload_cv(file: UploadFile = File(None), text: str = Form(None)):
+    source_name = "Pasted text"
     if file is not None:
+        source_name = (file.filename or "uploaded file")[:120]
         content = file.file.read()
-        extracted = _extract_text_from_upload(file.filename or "", content)
+        try:
+            extracted = _extract_text_from_upload(file.filename or "", content)
+        except Exception as exc:  # noqa: BLE001 - corrupt/encrypted/scanned files
+            raise HTTPException(status_code=400, detail=f"Could not read that file ({type(exc).__name__}). Try pasting the CV text instead.") from exc
     elif text:
         extracted = text
     else:
@@ -171,8 +210,12 @@ def upload_cv(file: UploadFile = File(None), text: str = Form(None)):
     if not extracted.strip():
         raise HTTPException(status_code=400, detail="Could not extract any text from that upload.")
 
-    cv_store.save_core_cv(extracted)
-    return {"ok": True, "text": extracted}
+    _drive_guard(cv_store.save_core_cv, extracted)
+    from datetime import datetime, timezone
+    uploaded_at = datetime.now(timezone.utc).isoformat()
+    tracker.set_state_value("core_cv_filename", source_name)
+    tracker.set_state_value("core_cv_uploaded_at", uploaded_at)
+    return {"ok": True, "text": extracted, "filename": source_name, "uploaded_at": uploaded_at}
 
 
 # --- Generation ---
@@ -186,7 +229,7 @@ class GenerateRequest(BaseModel):
 
 @app.post("/api/generate", dependencies=[Depends(require_auth)])
 def generate(req: GenerateRequest):
-    core_cv = cv_store.get_core_cv()
+    core_cv = _drive_guard(cv_store.get_core_cv)
     if not core_cv:
         raise HTTPException(status_code=400, detail="Upload a core CV first (see the CV Manager tab).")
 
@@ -210,8 +253,9 @@ def generate(req: GenerateRequest):
     cv_pdf = pdf_export.cv_to_pdf(config.CANDIDATE_NAME, cv_text)
     cover_letter_pdf = pdf_export.cover_letter_to_pdf(config.CANDIDATE_NAME, req.company, cover_letter_text)
 
-    cv_file_id, cv_link = cv_store.save_generated_file(f"CV - {safe_company} - {req.position}.pdf", cv_pdf)
-    cl_file_id, cl_link = cv_store.save_generated_file(
+    cv_file_id, cv_link = _drive_guard(cv_store.save_generated_file, f"CV - {safe_company} - {req.position}.pdf", cv_pdf)
+    cl_file_id, cl_link = _drive_guard(
+        cv_store.save_generated_file,
         f"Cover Letter - {safe_company} - {req.position}.pdf", cover_letter_pdf
     )
     cv_versions.add_version(

@@ -274,7 +274,7 @@
 
 <script>
 const api = (path, opts) => fetch(path, opts).then(async r => {
-  if (!r.ok) { const body = await r.json().catch(() => ({})); throw new Error(body.detail || r.statusText); }
+  if (!r.ok) { const body = await r.json().catch(() => ({})); throw new Error(body.detail || r.statusText || `Server error ${r.status}. Check the Render logs.`); }
   return r.json();
 });
 
@@ -671,9 +671,15 @@ rm.el('rmSend').addEventListener('click', async e => {
 // --- CV Manager ---
 async function loadCv() {
   const data = await api('/api/cv');
-  document.getElementById('cvStatus').textContent = data.has_cv
-    ? 'A core CV is saved. Paste new text or upload a file below to replace it.'
-    : 'No core CV uploaded yet.';
+  const status = document.getElementById('cvStatus');
+  if (!data.has_cv) { status.textContent = 'No core CV uploaded yet.'; }
+  else {
+    const when = data.uploaded_at
+      ? new Date(data.uploaded_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+    status.innerHTML = `Current core CV: <strong>${esc(data.filename || 'name not recorded')}</strong>`
+      + (when ? ` <span class="muted">· uploaded ${esc(when)}</span>` : '')
+      + '<br><span class="muted">Only the latest upload is kept. Paste new text or choose a file below to replace it.</span>';
+  }
   if (data.text) document.getElementById('cvText').value = data.text;
 }
 
