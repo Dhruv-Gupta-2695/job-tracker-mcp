@@ -38,7 +38,7 @@ def get_gmail_service():
     callers running unattended (cron, GitHub Actions, the daemon) should
     catch this specifically rather than let the process hang trying to open
     a browser that isn't there."""
-    return build("gmail", "v1", credentials=google_auth.get_credentials())
+    return google_auth.get_service("gmail", "v1")
 
 
 def _extract_body(payload: dict) -> str:

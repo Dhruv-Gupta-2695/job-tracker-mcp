@@ -33,6 +33,29 @@ from src import (  # noqa: E402
 )
 
 app = FastAPI(title="Job Tracker")
+
+
+def _rss_mb() -> float:
+    """Current resident memory of this process in MB (Linux; 0 elsewhere)."""
+    try:
+        with open("/proc/self/statm") as f:
+            return int(f.read().split()[1]) * 4096 / 1024 / 1024
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+@app.middleware("http")
+async def log_memory(request, call_next):
+    """Render's free tier kills the app above 512 MB. Log memory after every
+    POST and after any request that leaves the process above 250 MB, so the
+    Render logs show exactly which action makes it grow."""
+    before = _rss_mb()
+    response = await call_next(request)
+    after = _rss_mb()
+    if request.method != "GET" or after > 250:
+        print(f"[mem] {request.method} {request.url.path} -> {response.status_code} "
+              f"rss {before:.0f} -> {after:.0f} MB", flush=True)
+    return response
 security = HTTPBasic()
 
 # Icons only -- genuinely public/static, no auth needed, and the service
@@ -71,6 +94,10 @@ def require_auth(credentials: HTTPBasicCredentials = Depends(security)) -> None:
     correct = secrets.compare_digest(credentials.password, config.WEBAPP_PASSWORD)
     if not correct:
         raise HTTPException(status_code=401, detail="Incorrect password", headers={"WWW-Authenticate": "Basic"})
+
+
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+MAX_JD_CHARS = 20000
 
 
 def _drive_guard(fn, *args, **kwargs):
@@ -197,7 +224,9 @@ def upload_cv(file: UploadFile = File(None), text: str = Form(None)):
     source_name = "Pasted text"
     if file is not None:
         source_name = (file.filename or "uploaded file")[:120]
-        content = file.file.read()
+        content = file.file.read(MAX_UPLOAD_BYTES + 1)
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=400, detail="That file is over 5 MB. Upload a smaller CV or paste the text.")
         try:
             extracted = _extract_text_from_upload(file.filename or "", content)
         except Exception as exc:  # noqa: BLE001 - corrupt/encrypted/scanned files
@@ -229,6 +258,8 @@ class GenerateRequest(BaseModel):
 
 @app.post("/api/generate", dependencies=[Depends(require_auth)])
 def generate(req: GenerateRequest):
+    if len(req.job_description) > MAX_JD_CHARS:
+        raise HTTPException(status_code=400, detail=f"The job description is longer than {MAX_JD_CHARS} characters. Trim it.")
     core_cv = _drive_guard(cv_store.get_core_cv)
     if not core_cv:
         raise HTTPException(status_code=400, detail="Upload a core CV first (see the CV Manager tab).")

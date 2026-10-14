@@ -15,7 +15,7 @@ STATE_RANGE = "_State!A:B"
 
 
 def get_sheets_service():
-    return build("sheets", "v4", credentials=google_auth.get_credentials())
+    return google_auth.get_service("sheets", "v4")
 
 
 # Hidden helper tabs the webapp needs. If one is missing (for example

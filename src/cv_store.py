@@ -24,7 +24,7 @@ CORE_CV_FILENAME = "core_cv.txt"
 
 
 def get_drive_service():
-    return build("drive", "v3", credentials=google_auth.get_credentials())
+    return google_auth.get_service("drive", "v3")
 
 
 def _get_or_create_folder(service) -> str:

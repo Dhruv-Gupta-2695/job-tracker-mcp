@@ -14,6 +14,7 @@ from google import genai
 from . import config, prompts
 
 MAX_OUTPUT_TOKENS = 2000
+_client_cache = None
 
 
 def _client() -> genai.Client:
@@ -23,11 +24,16 @@ def _client() -> genai.Client:
             "(no credit card needed for the free tier) and add it to your "
             "environment."
         )
-    # A hard per-request timeout, so one stuck call can never leave the UI spinning.
-    return genai.Client(
-        api_key=config.GEMINI_API_KEY,
-        http_options=genai.types.HttpOptions(timeout=REQUEST_TIMEOUT_MS),
-    )
+    # One shared client (it is thread-safe) with a hard per-request timeout, so a
+    # stuck call can never leave the UI spinning and each call does not allocate
+    # a fresh HTTP client.
+    global _client_cache
+    if _client_cache is None or _client_cache[0] != config.GEMINI_API_KEY:
+        _client_cache = (config.GEMINI_API_KEY, genai.Client(
+            api_key=config.GEMINI_API_KEY,
+            http_options=genai.types.HttpOptions(timeout=REQUEST_TIMEOUT_MS),
+        ))
+    return _client_cache[1]
 
 
 FALLBACK_MODEL = "gemini-flash-lite-latest"

@@ -7,6 +7,7 @@ only ever go through the browser consent screen once for the whole project.
 from __future__ import annotations
 
 import os
+import threading
 from typing import Optional
 
 from google.auth.exceptions import RefreshError
@@ -63,3 +64,27 @@ def get_credentials() -> Credentials:
             f.write(creds.to_json())
 
     return creds
+
+
+# ---- Cached API clients -------------------------------------------------
+# build() parses a large API description each time it is called. Doing that on
+# every Sheets/Gmail/Drive call (dozens per page load) ballooned memory on
+# Render's 512 MB free tier. Build each client once per thread instead
+# (httplib2, which the clients use, is not thread-safe, so not shared across
+# threads). The cached client is dropped and rebuilt if its credentials are no
+# longer valid, so token refresh and GoogleAuthExpired behave as before.
+_local = threading.local()
+
+
+def get_service(name: str, version: str):
+    from googleapiclient.discovery import build
+    cache = getattr(_local, "services", None)
+    if cache is None:
+        cache = _local.services = {}
+    entry = cache.get((name, version))
+    if entry is not None and entry[1].valid:
+        return entry[0]
+    creds = get_credentials()
+    service = build(name, version, credentials=creds, cache_discovery=False)
+    cache[(name, version)] = (service, creds)
+    return service
