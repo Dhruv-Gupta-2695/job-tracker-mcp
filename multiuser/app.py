@@ -29,6 +29,31 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(title="Job Tracker (multi-user)")
 
+MAX_BODY_BYTES = 8 * 1024 * 1024
+
+
+@app.middleware("http")
+async def safety(request, call_next):
+    """Caps request size, adds browser security headers, and logs only method, path and status
+    (never headers, query strings or bodies, which can carry a user's keys or tokens)."""
+    length = request.headers.get("content-length")
+    if length and length.isdigit() and int(length) > MAX_BODY_BYTES:
+        return Response(status_code=413, content="Request too large")
+    try:
+        response = await call_next(request)
+    except Exception as exc:  # noqa: BLE001 - log the type only; messages can contain secrets
+        print(f"[error] {request.method} {request.url.path} -> {type(exc).__name__}", flush=True)
+        raise
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+        if response.status_code >= 400:
+            print(f"[api] {request.method} {request.url.path} -> {response.status_code}", flush=True)
+    return response
+
 
 def verify_id_token(token: str) -> dict:
     """Returns the verified Firebase token claims (uid in 'sub'/'user_id'). Raises ValueError if invalid."""

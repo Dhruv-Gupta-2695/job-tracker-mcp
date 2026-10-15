@@ -105,6 +105,13 @@
         </div>
         <p id="vaultMsg" class="muted"></p>
       </div>
+      <div class="card">
+        <strong>Delete my data</strong>
+        <p class="muted">Permanently deletes your applications, CV, generated documents, saved key and scan history from this site. It cannot be undone. Your Google account and Gmail are not touched. To also remove Gmail access, use <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">your Google permissions page</a>.</p>
+        <label>Type DELETE to confirm</label><input id="delConfirm" autocomplete="off">
+        <button id="delAll" class="ghost">Delete all my data</button>
+        <p id="delMsg" class="muted"></p>
+      </div>
     </section>
 
     <section id="tab-cv" class="hidden">
@@ -452,6 +459,25 @@ function renderApps() {
 }
 ["fSearch", "fStatus", "fRange"].forEach((id) => $(id).addEventListener("input", () => { shown = 50; renderApps(); }));
 $("appMore").onclick = () => { shown += 50; renderApps(); };
+
+// ---------- delete all my data ----------
+$("delAll").onclick = async () => {
+  if ($("delConfirm").value.trim() !== "DELETE") { $("delMsg").textContent = "Type DELETE (capitals) to confirm."; return; }
+  $("delMsg").textContent = "Deleting...";
+  try {
+    for (const name of ["apps", "cv", "generated", "meta", "secrets"]) {
+      const snap = await getDocs(collection(db, "users", auth.currentUser.uid, name));
+      for (let i = 0; i < snap.docs.length; i += 400) {
+        const batch = writeBatch(db);
+        snap.docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
+    geminiKey = null; gmailToken = null; coreCv = null; apps = []; historyList = [];
+    $("delConfirm").value = ""; $("delMsg").textContent = "All your data was deleted.";
+    await refreshVault(); await loadCv(); await loadHistory(); await loadApps();
+  } catch (e) { $("delMsg").textContent = "Could not delete everything: " + e.message; }
+};
 
 // ---------- tabs and sign-in ----------
 document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
