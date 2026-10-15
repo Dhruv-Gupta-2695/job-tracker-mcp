@@ -223,6 +223,8 @@ FIREBASE_AUTH_HOST = os.environ.get("FIREBASE_AUTH_HOST", f"{FIREBASE_PROJECT_ID
 @app.api_route("/__/firebase/{path:path}", methods=["GET"])
 def firebase_auth_proxy(request: Request, path: str):
     import requests
+    if ".." in path:
+        raise HTTPException(status_code=404, detail="Not found")
     base = "/__/auth/" if request.url.path.startswith("/__/auth/") else "/__/firebase/"
     url = f"https://{FIREBASE_AUTH_HOST}{base}{path}"
     try:
