@@ -2,7 +2,7 @@
 
 A personal job-application tracker that runs at zero cost. It reads your Gmail, records each application in a Google Sheet, tells you about replies on Telegram, and has a small web portal for viewing applications, tailoring CVs with AI, and writing or sending replies.
 
-Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 6 (multi-user) is built; Phase 7 (installable app and notifications) is built; Phase 8 (one home for the owner's data) is built; Phase 9 (reply writer and send) is the current phase. Unscheduled ideas are listed under Future aspects.
+Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 6 (multi-user) is built; Phase 7 (installable app and notifications) is built; Phase 8 (one home for the owner's data) is built; Phase 9 (reply writer and send) is built and deployed. Unscheduled ideas are listed under Future aspects.
 
 ## Delivery phases
 
@@ -143,7 +143,7 @@ Cut-over steps: add the secrets `FIREBASE_SERVICE_ACCOUNT_JSON` and `FIREBASE_OW
 
 Exit check: a scheduled scan runs with `USE_FIRESTORE=true`, a Telegram summary arrives, and new applications show up in the new portal.
 
-### Phase 9: Reply writer and send in the new portal (current, branch `phase-9-reply-writer`)
+### Phase 9: Reply writer and send in the new portal (built, merged into main)
 Goal: the AI reply writer, Gmail drafts and guarded send, rebuilt for the multi-user portal with the same safeguards as the old portal.
 
 Decisions (confirmed)
@@ -511,4 +511,4 @@ Two scans a day are a hard requirement (12:00 and 19:00 IST). GitHub's own `sche
 - Gemini free tier can return 503 under load; retries and the fallback model reduce but do not remove this.
 - The Reply button is enabled or disabled from the original confirmation's sender; the server makes the final decision from the latest message.
 
-**Planned, not built:** Phase 9 (current) and the Future aspects list, see above.
+**Planned, not built:** the Future aspects list, see above.
