@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Tracker</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root { --navy:#1f3a5f; --grey:#555; --line:#e3e6ea; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"Segoe UI",Roboto,sans-serif; color:#111; background:#f6f7f9; }
+  header { background:#fff; border-bottom:1px solid var(--line); padding:12px 20px; display:flex; align-items:center; justify-content:space-between; }
+  header h1 { font-size:18px; margin:0; color:var(--navy); }
+  main { max-width:960px; margin:24px auto; padding:0 16px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:16px; }
+  button { background:var(--navy); color:#fff; border:0; border-radius:8px; padding:9px 16px; font-size:14px; cursor:pointer; }
+  button.ghost { background:#fff; color:var(--navy); border:1px solid var(--navy); }
+  .muted { color:var(--grey); font-size:14px; }
+  .err { color:#b00020; font-size:14px; }
+  .center { text-align:center; padding:60px 20px; }
+  .row { display:flex; gap:10px; align-items:center; }
+  .badge { background:#eef2f7; border-radius:12px; padding:3px 10px; font-size:12px; color:var(--navy); }
+  .hidden { display:none; }
+  nav { display:flex; gap:6px; margin-bottom:16px; }
+  nav button { background:#fff; color:var(--navy); border:1px solid var(--line); }
+  nav button.on { background:var(--navy); color:#fff; border-color:var(--navy); }
+  input, textarea { width:100%; padding:9px 10px; border:1px solid #c9ced6; border-radius:8px; font:inherit; margin:4px 0 10px; }
+  textarea { min-height:140px; resize:vertical; }
+  label { font-size:13px; color:var(--grey); }
+  .ok { color:#0a7a3d; font-size:14px; }
+  pre { white-space:pre-wrap; background:#f3f5f8; padding:12px; border-radius:8px; font-size:13px; max-height:260px; overflow:auto; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:8px 6px; border-top:1px solid var(--line); vertical-align:top; }
+  th { color:var(--grey); font-weight:600; font-size:12px; text-transform:uppercase; }
+  .tiles { display:flex; gap:10px; flex-wrap:wrap; margin:12px 0; }
+  .tile { flex:1; min-width:90px; border:1px solid var(--line); border-radius:10px; padding:10px; text-align:center; }
+  .tile b { display:block; font-size:22px; color:var(--navy); }
+  .st { border-radius:10px; padding:2px 9px; font-size:12px; background:#eef2f7; }
+  .st.interview { background:#e3f2ff; } .st.offer { background:#e2f7e8; } .st.rejected { background:#fde8e8; }
+  select { padding:7px; border:1px solid #c9ced6; border-radius:8px; font:inherit; }
+  .hist { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-top:1px solid var(--line); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Job Tracker</h1>
+  <div id="who" class="row hidden"><span id="whoName" class="muted"></span><button class="ghost" id="signOut">Sign out</button></div>
+</header>
+<main>
+  <div id="signedOut" class="card center hidden">
+    <h2>Track your job applications</h2>
+    <p class="muted">Sign in with Google. Your data is private to your account.</p>
+    <button id="signIn">Sign in with Google</button>
+    <p id="authErr" class="err"></p>
+  </div>
+
+  <div id="signedIn" class="hidden">
+    <div class="card row"><strong>Signed in</strong><span class="badge" id="uidBadge"></span><span class="muted" id="meInfo"></span></div>
+    <nav>
+      <button data-tab="apps" class="on">Applications</button>
+      <button data-tab="setup">Setup</button>
+      <button data-tab="cv">Your CV</button>
+      <button data-tab="gen">Generate</button>
+    </nav>
+
+    <section id="tab-apps">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;flex-wrap:wrap">
+          <div><strong>Your applications</strong><div class="muted" id="scanInfo">Not scanned yet.</div></div>
+          <div class="row">
+            <select id="scanDays" title="How far back the first scan looks"><option value="30">First scan: 30 days</option><option value="60" selected>First scan: 60 days</option><option value="120">First scan: 120 days</option></select>
+            <button id="scanBtn">Connect Gmail and scan</button>
+          </div>
+        </div>
+        <p class="muted" id="scanMsg"></p>
+        <div class="tiles" id="tiles"></div>
+        <div class="row" style="flex-wrap:wrap">
+          <input id="fSearch" placeholder="Search company or position" style="max-width:260px;margin:0">
+          <select id="fStatus"><option value="">All statuses</option><option>applied</option><option>interview</option><option>offer</option><option>rejected</option><option>update</option></select>
+          <select id="fRange"><option value="0">All time</option><option value="1">Last 24 hours</option><option value="3">Last 3 days</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select>
+        </div>
+        <table style="margin-top:12px"><thead><tr><th>Company</th><th>Position</th><th>Status</th><th>Applied</th><th>Last update</th><th></th></tr></thead><tbody id="appRows"></tbody></table>
+        <p class="muted" id="appEmpty"></p>
+        <button class="ghost hidden" id="appMore">Show more</button>
+      </div>
+    </section>
+
+    <section id="tab-setup" class="hidden">
+      <div class="card">
+        <strong>Your Gemini key</strong>
+        <p class="muted">Get a free key at aistudio.google.com (no card needed). It is encrypted in this browser with your passphrase before it is saved, so nobody else, including the site owner, can read it. Forget the passphrase and you just enter your key again.</p>
+        <div id="vaultNew" class="hidden">
+          <label>Gemini API key</label><input id="keyIn" type="password" autocomplete="off" placeholder="AIza...">
+          <label>Choose a passphrase (8+ characters)</label><input id="pass1" type="password" autocomplete="new-password">
+          <label>Repeat passphrase</label><input id="pass2" type="password" autocomplete="new-password">
+          <button id="vaultSave">Encrypt and save</button>
+        </div>
+        <div id="vaultLocked" class="hidden">
+          <label>Passphrase</label><input id="passUnlock" type="password" autocomplete="current-password">
+          <div class="row"><button id="vaultUnlock">Unlock</button><button class="ghost" id="vaultRemove">Remove saved key</button></div>
+        </div>
+        <div id="vaultOpen" class="hidden">
+          <p class="ok">Key unlocked for this session.</p>
+          <div class="row"><button id="keyTest" class="ghost">Test key</button><button id="vaultLock" class="ghost">Lock</button></div>
+        </div>
+        <p id="vaultMsg" class="muted"></p>
+      </div>
+      <div class="card">
+        <strong>Delete my data</strong>
+        <p class="muted">Permanently deletes your applications, CV, generated documents, saved key and scan history from this site. It cannot be undone. Your Google account and Gmail are not touched. To also remove Gmail access, use <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">your Google permissions page</a>.</p>
+        <label>Type DELETE to confirm</label><input id="delConfirm" autocomplete="off">
+        <button id="delAll" class="ghost">Delete all my data</button>
+        <p id="delMsg" class="muted"></p>
+      </div>
+    </section>
+
+    <section id="tab-cv" class="hidden">
+      <div class="card">
+        <strong>Your core CV</strong>
+        <p class="muted" id="cvInfo">No CV saved yet.</p>
+        <label>Upload a PDF, DOCX or text file (PDF keeps your links)</label>
+        <input id="cvFile" type="file" accept=".pdf,.docx,.txt,.md">
+        <label>or paste the text</label>
+        <textarea id="cvText"></textarea>
+        <button id="cvSave">Read and save my CV</button>
+        <p id="cvMsg" class="muted"></p>
+      </div>
+    </section>
+
+    <section id="tab-gen" class="hidden">
+      <div class="card">
+        <strong>Generate a tailored CV and cover letter</strong>
+        <p class="muted">Each button makes one Gemini call, so you only use quota for what you need.</p>
+        <label>Company</label><input id="gCompany">
+        <label>Position</label><input id="gPosition">
+        <label>Job description</label><textarea id="gJd"></textarea>
+        <div class="row"><button id="gCvBtn">Generate CV</button><button id="gLetterBtn" class="ghost">Generate cover letter</button></div>
+        <p id="gMsg" class="muted"></p>
+        <div id="gSimilar" class="hidden card" style="background:#fff8e6;border-color:#f0d890">
+          <strong id="gSimTitle"></strong>
+          <p class="muted" id="gSimText"></p>
+          <div class="row"><button id="simDl" class="ghost">Download earlier one</button><button id="simFresh">Generate a fresh one anyway</button></div>
+        </div>
+        <div id="gOut" class="hidden">
+          <div class="row"><button id="dlCv" class="ghost hidden">Download CV (PDF)</button><button id="dlLetter" class="ghost hidden">Download cover letter (PDF)</button></div>
+          <p class="muted" id="gNote"></p>
+          <pre id="gLetter" class="hidden"></pre>
+        </div>
+      </div>
+      <div class="card"><strong>Previous generations</strong><div id="hist" class="muted">Nothing yet.</div></div>
+    </section>
+  </div>
+<p class="muted" style="text-align:center;margin-top:24px"><a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></p>
+</main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged }
+  from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+// Web config is public by design: access is controlled by sign-in and firestore.rules.
+const firebaseConfig = {
+  apiKey: "AIzaSyCN43IEra5RpDXgASfYwTtdy8CCtbVAeoM",
+  authDomain: "job-tracker-820d3.firebaseapp.com",
+  projectId: "job-tracker-820d3",
+  storageBucket: "job-tracker-820d3.firebasestorage.app",
+  messagingSenderId: "1043405535011",
+  appId: "1:1043405535011:web:b00d7bdeee321151f93e96"
+};
+// On localhost (plain http) sign in with a pop-up. On the deployed https site, sign in by
+// redirect in the same tab, using this site's own address for Firebase's helper pages
+// (the server forwards /__/auth/ to Firebase), so no extra tab is left behind.
+const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
+if (!isLocal) firebaseConfig.authDomain = location.host;
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const $ = (id) => document.getElementById(id);
+
+import { collection, addDoc, getDocs, query, orderBy, limit, deleteDoc, writeBatch, updateDoc }
+  from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+let geminiKey = null;     // lives only in memory for this tab session
+let coreCv = null;        // {text, struct, filename}
+
+const api = async (path, opts = {}) => {
+  const token = await auth.currentUser.getIdToken();
+  const headers = { ...(opts.headers || {}), Authorization: `Bearer ${token}` };
+  if (opts.needsKey) headers["X-Gemini-Key"] = geminiKey;
+  const r = await fetch(path, { ...opts, headers });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || `Server error ${r.status}`);
+  return body;
+};
+
+// ---------- vault: AES-GCM key from a passphrase (PBKDF2) ----------
+const enc = new TextEncoder(), dec = new TextDecoder();
+const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = (s) => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function deriveKey(pass, salt) {
+  const base = await crypto.subtle.importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 250000, hash: "SHA-256" }, base,
+    { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+const vaultRef = () => doc(db, "users", auth.currentUser.uid, "secrets", "gemini");
+async function vaultEncrypt(key, pass) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await deriveKey(pass, salt), enc.encode(key));
+  return { salt: b64(salt), iv: b64(iv), ct: b64(ct) };
+}
+async function vaultDecrypt(rec, pass) {
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(rec.iv) }, await deriveKey(pass, unb64(rec.salt)), unb64(rec.ct));
+  return dec.decode(pt);
+}
+async function refreshVault() {
+  const snap = await getDoc(vaultRef());
+  $("vaultNew").classList.toggle("hidden", snap.exists());
+  $("vaultLocked").classList.toggle("hidden", !snap.exists() || !!geminiKey);
+  $("vaultOpen").classList.toggle("hidden", !geminiKey);
+}
+$("vaultSave").onclick = async () => {
+  const key = $("keyIn").value.trim(), p1 = $("pass1").value, p2 = $("pass2").value;
+  if (!/^[A-Za-z0-9_.\-]{20,120}$/.test(key)) { $("vaultMsg").textContent = "That does not look like a Gemini key."; return; }
+  if (p1.length < 8 || p1 !== p2) { $("vaultMsg").textContent = "Passphrases must match and be 8+ characters."; return; }
+  $("vaultMsg").textContent = "Encrypting...";
+  await setDoc(vaultRef(), { ...(await vaultEncrypt(key, p1)), updatedAt: serverTimestamp() });
+  geminiKey = key; $("keyIn").value = $("pass1").value = $("pass2").value = "";
+  $("vaultMsg").textContent = "Saved (encrypted). Unlocked for this session.";
+  await refreshVault();
+};
+$("vaultUnlock").onclick = async () => {
+  try {
+    geminiKey = await vaultDecrypt((await getDoc(vaultRef())).data(), $("passUnlock").value);
+    $("passUnlock").value = ""; $("vaultMsg").textContent = "";
+  } catch { $("vaultMsg").textContent = "Wrong passphrase."; }
+  await refreshVault();
+};
+$("vaultLock").onclick = async () => { geminiKey = null; await refreshVault(); };
+$("vaultRemove").onclick = async () => {
+  if (!confirm("Remove your saved key? You can add it again later.")) return;
+  await deleteDoc(vaultRef()); geminiKey = null; $("vaultMsg").textContent = "Removed."; await refreshVault();
+};
+$("keyTest").onclick = async () => {
+  $("vaultMsg").textContent = "Testing...";
+  try { await api("/api/gemini/check", { method: "POST", needsKey: true }); $("vaultMsg").textContent = "Your key works."; }
+  catch (e) { $("vaultMsg").textContent = e.message; }
+};
+
+// ---------- core CV ----------
+const cvRef = () => doc(db, "users", auth.currentUser.uid, "cv", "core");
+async function loadCv() {
+  const snap = await getDoc(cvRef());
+  if (!snap.exists()) { coreCv = null; $("cvInfo").textContent = "No CV saved yet."; return; }
+  const d = snap.data();
+  coreCv = { text: d.text, struct: JSON.parse(d.struct), filename: d.filename };
+  $("cvInfo").textContent = `Saved: ${d.filename} (${coreCv.struct.sections.length} sections).`;
+}
+$("cvSave").onclick = async () => {
+  if (!geminiKey) { $("cvMsg").textContent = "Unlock your Gemini key in Setup first."; return; }
+  const file = $("cvFile").files[0], text = $("cvText").value;
+  if (!file && !text.trim()) { $("cvMsg").textContent = "Choose a file or paste your CV."; return; }
+  const form = new FormData();
+  if (file) form.append("file", file); else form.append("text", text);
+  $("cvMsg").textContent = "Reading your CV (about 15 seconds)...";
+  try {
+    const r = await api("/api/cv/parse", { method: "POST", body: form, needsKey: true });
+    await setDoc(cvRef(), { text: r.text, struct: JSON.stringify(r.struct), filename: r.filename, updatedAt: serverTimestamp() });
+    await loadCv();
+    $("cvMsg").textContent = `Saved. Layout read, ${r.links_found} link(s) captured.`;
+  } catch (e) { $("cvMsg").textContent = e.message; }
+};
+
+// ---------- generate (CV and cover letter are separate Gemini calls) ----------
+const download = (b64s, name) => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([unb64(b64s)], { type: "application/pdf" }));
+  a.download = name; a.click();
+};
+let historyList = [];          // [{id, company, position, cvPdf?, letterPdf?, jd?, createdAt}]
+let shownOut = null;           // what the result area is showing
+const norm = (t) => (t || "").toLowerCase().replace(/\s+/g, " ").trim();
+const wordSet = (t) => new Set(norm(t).slice(0, 1500).split(/[^a-z0-9+#.]+/).filter((w) => w.length > 2));
+function jdSimilarity(a, b) {
+  const x = wordSet(a), y = wordSet(b);
+  if (!x.size || !y.size) return 0;
+  let inter = 0; x.forEach((w) => { if (y.has(w)) inter++; });
+  return inter / (x.size + y.size - inter);
+}
+const fieldOf = (kind) => (kind === "cv" ? "cvPdf" : "letterPdf");
+const sameJob = (h, company, position) => norm(h.company) === norm(company) && norm(h.position) === norm(position);
+// An earlier entry of this kind for the same company and position, or a very similar job description.
+function findEarlier(kind, company, position, jd) {
+  let best = null;
+  for (const h of historyList) {
+    if (!h[fieldOf(kind)]) continue;
+    let score = 0, why = "";
+    if (sameJob(h, company, position)) { score = 1; why = "same company and position"; }
+    else if (h.jd || h.jdSnippet) { score = jdSimilarity(jd, h.jd || h.jdSnippet); why = "very similar job description"; if (score < 0.6) score = 0; }
+    if (score && (!best || score > best.score)) best = { h, score, why };
+  }
+  return best;
+}
+const label = (kind) => (kind === "cv" ? "CV" : "cover letter");
+
+function showOut(patch) {
+  shownOut = { ...(shownOut || {}), ...patch };
+  $("gOut").classList.remove("hidden");
+  $("dlCv").classList.toggle("hidden", !shownOut.cvPdf);
+  $("dlLetter").classList.toggle("hidden", !shownOut.letterPdf);
+  $("gLetter").classList.toggle("hidden", !shownOut.letterText);
+  if (shownOut.letterText) $("gLetter").textContent = shownOut.letterText;
+  $("gNote").textContent = shownOut.note || "";
+}
+$("dlCv").onclick = () => shownOut?.cvPdf && download(shownOut.cvPdf, `CV - ${shownOut.company} - ${shownOut.position}.pdf`);
+$("dlLetter").onclick = () => shownOut?.letterPdf && download(shownOut.letterPdf, `Cover Letter - ${shownOut.company} - ${shownOut.position}.pdf`);
+
+// Saves the result into the history entry for this company and position (created if new).
+async function saveResult(kind, job, r) {
+  const col = collection(db, "users", auth.currentUser.uid, "generated");
+  const existing = historyList.find((h) => sameJob(h, job.company, job.position));
+  const data = kind === "cv"
+    ? { cvPdf: r.cv_pdf_b64, cvText: r.cv_text }
+    : { letterPdf: r.letter_pdf_b64, letterText: r.letter_text };
+  if (existing) await updateDoc(doc(col, existing.id), { ...data, jd: job.jd.slice(0, 20000), updatedAt: serverTimestamp() });
+  else await addDoc(col, { company: job.company, position: job.position, ...data, jd: job.jd.slice(0, 20000), createdAt: serverTimestamp() });
+  await loadHistory();
+}
+
+async function runGenerate(kind, job) {
+  if (!geminiKey) { $("gMsg").textContent = "Unlock your Gemini key in Setup first."; return; }
+  if (!coreCv) { $("gMsg").textContent = "Save your CV first."; return; }
+  $("gMsg").textContent = `Generating your ${label(kind)} (up to a minute)...`;
+  $("gCvBtn").disabled = $("gLetterBtn").disabled = true;
+  try {
+    const r = await api(kind === "cv" ? "/api/generate" : "/api/generate-letter", {
+      method: "POST", needsKey: true, headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ core_struct: coreCv.struct, core_text: coreCv.text, company: job.company, position: job.position, job_description: job.jd }) });
+    const sameShown = shownOut && sameJob(shownOut, job.company, job.position);
+    if (!sameShown) shownOut = null;
+    showOut(kind === "cv"
+      ? { company: job.company, position: job.position, cvPdf: r.cv_pdf_b64, note: `CV: ${r.cv_pages} page(s), ${r.cv_changes} wording change(s).` }
+      : { company: job.company, position: job.position, letterPdf: r.letter_pdf_b64, letterText: r.letter_text, note: shownOut?.note || "" });
+    $("gMsg").textContent = "";
+    await saveResult(kind, job, r);
+  } catch (e) { $("gMsg").textContent = e.message; }
+  finally { $("gCvBtn").disabled = $("gLetterBtn").disabled = false; }
+}
+
+let pendingFresh = null;
+$("simFresh").onclick = () => { $("gSimilar").classList.add("hidden"); if (pendingFresh) runGenerate(pendingFresh.kind, pendingFresh.job); };
+function startGenerate(kind) {
+  $("gSimilar").classList.add("hidden");
+  const job = { company: $("gCompany").value.trim(), position: $("gPosition").value.trim(), jd: $("gJd").value };
+  if (!job.company || !job.position || !job.jd.trim()) { $("gMsg").textContent = "Fill in company, position and job description."; return; }
+  const m = findEarlier(kind, job.company, job.position, job.jd);
+  if (!m) return runGenerate(kind, job);
+  const when = m.h.createdAt?.toDate ? m.h.createdAt.toDate().toLocaleDateString() : "earlier";
+  pendingFresh = { kind, job };
+  $("gSimTitle").textContent = `You already made a ${label(kind)} for this one`;
+  $("gSimText").textContent = `${m.h.company} - ${m.h.position} (${when}, ${m.why}). Reuse it, or generate a fresh one.`;
+  $("simDl").onclick = () => download(m.h[fieldOf(kind)], `${kind === "cv" ? "CV" : "Cover Letter"} - ${m.h.company} - ${m.h.position}.pdf`);
+  $("gSimilar").classList.remove("hidden");
+}
+$("gCvBtn").onclick = () => startGenerate("cv");
+$("gLetterBtn").onclick = () => startGenerate("letter");
+
+async function loadHistory() {
+  const snap = await getDocs(query(collection(db, "users", auth.currentUser.uid, "generated"), orderBy("createdAt", "desc"), limit(25)));
+  const box = $("hist"); box.textContent = ""; historyList = [];
+  if (snap.empty) { box.textContent = "Nothing yet."; return; }
+  snap.forEach((d) => {
+    const x = { id: d.id, ...d.data() }; historyList.push(x);
+    const row = document.createElement("div"); row.className = "hist";
+    const name = document.createElement("span"); name.textContent = `${x.company} - ${x.position}`;
+    const btns = document.createElement("span");
+    for (const kind of ["cv", "letter"]) {
+      const b = document.createElement("button"); b.className = "ghost"; b.style.marginLeft = "6px";
+      if (x[fieldOf(kind)]) { b.textContent = kind === "cv" ? "CV" : "Letter"; b.onclick = () => download(x[fieldOf(kind)], `${kind === "cv" ? "CV" : "Cover Letter"} - ${x.company} - ${x.position}.pdf`); }
+      else if (x.jd) { b.textContent = kind === "cv" ? "+ Add CV" : "+ Add letter"; b.onclick = () => runGenerate(kind, { company: x.company, position: x.position, jd: x.jd }); }
+      else continue;
+      btns.appendChild(b);
+    }
+    row.append(name, btns); box.appendChild(row);
+  });
+}
+
+// ---------- applications: Gmail scan + dashboard ----------
+const GOOGLE_CLIENT_ID = "1043405535011-qnjs0cmuso9fofd31u7709l1hgioetkf.apps.googleusercontent.com";
+const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+let gmailToken = null, gmailTokenExp = 0, tokenClient = null, apps = [], metaScan = { lastScanAt: "", seenIds: [] }, shown = 50;
+const appsCol = () => collection(db, "users", auth.currentUser.uid, "apps");
+const metaRef = () => doc(db, "users", auth.currentUser.uid, "meta", "scan");
+
+function getGmailToken() {
+  return new Promise((resolve, reject) => {
+    if (gmailToken && Date.now() < gmailTokenExp - 60000) return resolve(gmailToken);
+    if (!window.google?.accounts?.oauth2) return reject(new Error("Google sign-in script did not load. Reload the page."));
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID, scope: GMAIL_SCOPE, hint: auth.currentUser.email,
+      callback: (r) => {
+        if (r.error) return reject(new Error(r.error === "access_denied" ? "Gmail access was not allowed." : "Could not connect Gmail (" + r.error + ")."));
+        gmailToken = r.access_token; gmailTokenExp = Date.now() + (r.expires_in || 3600) * 1000; resolve(gmailToken);
+      },
+      error_callback: () => reject(new Error("The Gmail permission window was closed.")),
+    });
+    tokenClient.requestAccessToken({ prompt: gmailToken === null && !metaScan.lastScanAt ? "consent" : "" });
+  });
+}
+
+async function loadApps() {
+  const [snap, meta] = await Promise.all([getDocs(appsCol()), getDoc(metaRef())]);
+  apps = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  metaScan = meta.exists() ? { lastScanAt: meta.data().lastScanAt || "", seenIds: meta.data().seenIds || [] } : { lastScanAt: "", seenIds: [] };
+  $("scanInfo").textContent = metaScan.lastScanAt ? "Last scan: " + new Date(metaScan.lastScanAt).toLocaleString() : "Not scanned yet.";
+  $("scanBtn").textContent = metaScan.lastScanAt ? "Scan for new mail" : "Connect Gmail and scan";
+  renderApps();
+}
+
+$("scanBtn").onclick = async () => {
+  $("scanBtn").disabled = true; $("scanMsg").textContent = "Connecting to Gmail...";
+  let added = 0, updated = 0, done = 0, total = 0;
+  const seenAll = new Set(metaScan.seenIds);
+  try {
+    let token = await getGmailToken();
+    const list = await api("/api/scan/list", { method: "POST", headers: { "Content-Type": "application/json", "X-Gmail-Token": token },
+      body: JSON.stringify({ since_iso: metaScan.lastScanAt || null, days: +$("scanDays").value, seen_ids: metaScan.seenIds }) });
+    total = list.ids.length;
+    if (!total) $("scanMsg").textContent = "No new email since the last scan.";
+    const working = new Map(apps.map(({ id, ...a }) => [a.threadId, a]));
+    for (let i = 0; i < total; i += 40) {
+      $("scanMsg").textContent = `Reading your mail: ${done} of ${total}...`;
+      token = await getGmailToken();   // refreshes if the hour ran out mid-scan
+      const chunk = list.ids.slice(i, i + 40);
+      let r = null;
+      for (let attempt = 0; attempt < 5 && !r; attempt++) {
+        try {
+          r = await api("/api/scan/process", { method: "POST", headers: { "Content-Type": "application/json", "X-Gmail-Token": token },
+            body: JSON.stringify({ ids: chunk, existing: [...working.values()], user_email: auth.currentUser.email }) });
+        } catch (err) {
+          if (!/busy/i.test(err.message) || attempt === 4) throw err;
+          for (let s = 20; s > 0; s--) { $("scanMsg").textContent = `Gmail asked us to slow down. Continuing in ${s}s (${done} of ${total} done)...`; await new Promise((ok) => setTimeout(ok, 1000)); }
+        }
+      }
+      if (r.upserts.length) {
+        const batch = writeBatch(db);
+        r.upserts.forEach((a) => { working.set(a.threadId, a); batch.set(doc(appsCol(), a.threadId), a, { merge: true }); });
+        await batch.commit();
+      }
+      added += r.new; updated += r.updated; done += chunk.length;
+      r.seen.forEach((x) => seenAll.add(x));
+      await setDoc(metaRef(), { lastScanAt: metaScan.lastScanAt || "", seenIds: [...seenAll].slice(-3000) });
+      apps = [...working.values()].map((a) => ({ id: a.threadId, ...a })); renderApps();
+    }
+    await setDoc(metaRef(), { lastScanAt: list.started_at, seenIds: [...seenAll].slice(-3000) });
+    await loadApps();
+    $("scanMsg").textContent = `Scanned ${total} email(s): ${added} new application(s), ${updated} updated.`;
+  } catch (e) {
+    if (/Connect Gmail again/.test(e.message)) gmailToken = null;
+    $("scanMsg").textContent = (done ? `Stopped after ${done} of ${total} emails (what was found is saved; scan again to continue). ` : "") + e.message;
+  } finally { $("scanBtn").disabled = false; }
+};
+
+function renderApps() {
+  const q = norm($("fSearch").value), st = $("fStatus").value, days = +$("fRange").value;
+  const cutoff = days ? new Date(Date.now() - days * 86400000).toISOString().slice(0, 10) : "";
+  const inRange = apps.filter((a) => !cutoff || (a.appliedDate || "") >= cutoff);
+  const counts = { applied: 0, interview: 0, offer: 0, rejected: 0, update: 0 };
+  inRange.forEach((a) => { if (counts[a.status] !== undefined) counts[a.status]++; });
+  const tiles = $("tiles"); tiles.textContent = "";
+  for (const [k, v] of [["Total", inRange.length], ...Object.entries(counts)]) {
+    const t = document.createElement("div"); t.className = "tile";
+    const b = document.createElement("b"); b.textContent = v; t.append(b, k[0].toUpperCase() + k.slice(1)); tiles.appendChild(t);
+  }
+  const rows = inRange.filter((a) => (!st || a.status === st) && (!q || norm(a.company + " " + a.position).includes(q)))
+    .sort((a, b) => (b.appliedDate || "").localeCompare(a.appliedDate || ""));
+  const body = $("appRows"); body.textContent = "";
+  rows.slice(0, shown).forEach((a) => {
+    const tr = document.createElement("tr");
+    const cell = (txt) => { const td = document.createElement("td"); td.textContent = txt || ""; tr.appendChild(td); return td; };
+    cell(a.company); cell(a.position);
+    const sTd = document.createElement("td"), sel = document.createElement("select");
+    ["applied", "interview", "offer", "rejected", "update"].forEach((o) => { const op = document.createElement("option"); op.textContent = o; op.selected = o === a.status; sel.appendChild(op); });
+    sel.onchange = async () => { a.status = sel.value; await updateDoc(doc(appsCol(), a.id), { status: sel.value }); renderApps(); };
+    sTd.appendChild(sel); tr.appendChild(sTd);
+    cell(a.appliedDate); cell((a.lastUpdate || "").slice(0, 10));
+    const lTd = document.createElement("td");
+    if ((a.gmailLink || "").startsWith("https://mail.google.com/")) {
+      const l = document.createElement("a"); l.href = a.gmailLink; l.target = "_blank"; l.rel = "noopener"; l.textContent = "Open"; lTd.appendChild(l);
+    }
+    tr.appendChild(lTd); body.appendChild(tr);
+  });
+  $("appEmpty").textContent = rows.length ? "" : (apps.length ? "No applications match these filters." : "No applications yet. Connect Gmail and scan.");
+  $("appMore").classList.toggle("hidden", rows.length <= shown);
+}
+["fSearch", "fStatus", "fRange"].forEach((id) => $(id).addEventListener("input", () => { shown = 50; renderApps(); }));
+$("appMore").onclick = () => { shown += 50; renderApps(); };
+
+// ---------- delete all my data ----------
+$("delAll").onclick = async () => {
+  if ($("delConfirm").value.trim() !== "DELETE") { $("delMsg").textContent = "Type DELETE (capitals) to confirm."; return; }
+  $("delMsg").textContent = "Deleting...";
+  try {
+    for (const name of ["apps", "cv", "generated", "meta", "secrets"]) {
+      const snap = await getDocs(collection(db, "users", auth.currentUser.uid, name));
+      for (let i = 0; i < snap.docs.length; i += 400) {
+        const batch = writeBatch(db);
+        snap.docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
+    geminiKey = null; gmailToken = null; coreCv = null; apps = []; historyList = [];
+    $("delConfirm").value = ""; $("delMsg").textContent = "All your data was deleted.";
+    await refreshVault(); await loadCv(); await loadHistory(); await loadApps();
+  } catch (e) { $("delMsg").textContent = "Could not delete everything: " + e.message; }
+};
+
+// ---------- tabs and sign-in ----------
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b));
+  for (const t of ["apps", "setup", "cv", "gen"]) $("tab-" + t).classList.toggle("hidden", t !== b.dataset.tab);
+});
+$("signIn").onclick = async () => {
+  $("authErr").textContent = "";
+  try {
+    const provider = new GoogleAuthProvider();
+    if (isLocal) await signInWithPopup(auth, provider); else await signInWithRedirect(auth, provider);
+  } catch (e) { $("authErr").textContent = e.code === "auth/unauthorized-domain"
+      ? "This website address is not allowed yet. Add it under Firebase > Authentication > Settings > Authorized domains."
+      : (e.message || "Sign-in failed."); }
+};
+$("signOut").onclick = () => { geminiKey = null; gmailToken = null; coreCv = null; apps = []; signOut(auth); };
+
+getRedirectResult(auth).catch((e) => { $("authErr").textContent = e.message || "Sign-in failed."; });
+
+onAuthStateChanged(auth, async (user) => {
+  $("signedOut").classList.toggle("hidden", !!user);
+  $("signedIn").classList.toggle("hidden", !user);
+  $("who").classList.toggle("hidden", !user);
+  if (!user) return;
+  $("whoName").textContent = user.displayName || user.email;
+  $("uidBadge").textContent = "id " + user.uid.slice(0, 6) + "...";
+  try { const me = await api("/api/me"); $("meInfo").textContent = `Server verified ${me.email}.`; }
+  catch (e) { $("meInfo").textContent = "Server check failed: " + e.message; }
+  try { await refreshVault(); await loadCv(); await loadHistory(); await loadApps(); }
+  catch (e) { $("vaultMsg").textContent = "Could not read your data: " + e.message; }
+});
+</script>
+</body>
+</html>

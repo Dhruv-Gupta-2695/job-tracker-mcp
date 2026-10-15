@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isOwner(userId) { return signedIn() && request.auth.uid == userId; }
+
+    // Each user can read and write only their own data, and only in the known places.
+    // Anything not listed here is denied, for everyone.
+    match /users/{userId}/apps/{docId}      { allow read, write: if isOwner(userId); }
+    match /users/{userId}/cv/{docId}        { allow read, write: if isOwner(userId); }
+    match /users/{userId}/generated/{docId} { allow read, write: if isOwner(userId); }
+    match /users/{userId}/meta/{docId}      { allow read, write: if isOwner(userId); }
+    match /users/{userId}/secrets/{docId}   { allow read, write: if isOwner(userId); }
+  }
+}
