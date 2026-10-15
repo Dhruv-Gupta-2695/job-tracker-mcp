@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Job Tracker</title>
+<title>NextStep</title>
 <script>try{document.documentElement.dataset.theme=localStorage.getItem("jt.theme")||"dark"}catch(e){document.documentElement.dataset.theme="dark"}</script>
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/static/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
 <meta name="theme-color" content="#171a21">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Job Tracker">
+<meta name="apple-mobile-web-app-title" content="NextStep">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root { --bg:#0f1115; --panel:#171a21; --border:#2a2f3a; --text:#e6e8ee; --muted:#9aa3b2; --accent:#5b8def; --accent-dim:#33507a;
@@ -20,7 +20,12 @@
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
   header { padding:18px 28px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
-  header h1 { font-size:18px; margin:0; font-weight:600; }
+  header h1 { font-size:20px; margin:0; font-weight:800; line-height:1.1; letter-spacing:-.01em; }
+  header h1 span { color:var(--accent); }
+  .brand { display:flex; align-items:center; gap:10px; text-decoration:none; color:var(--text); }
+  .brand img { border-radius:8px; }
+  .brand small { display:block; color:var(--muted); font-size:11px; letter-spacing:.03em; margin-top:2px; }
+  @media (max-width:560px) { .brand small { display:none; } }
   main { padding:24px 28px; max-width:1280px; margin:0 auto; }
   .card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:18px 20px; margin-bottom:16px; }
   .card h2 { font-size:14px; margin:0 0 12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
@@ -42,6 +47,7 @@
   .muted { color:var(--muted); font-size:13px; }
   .err { color:var(--red); font-size:14px; } .ok { color:var(--green); font-size:14px; }
   .hero { text-align:center; padding:48px 16px 28px; }
+  .herologo { border-radius:20px; margin-bottom:14px; }
   .hero h1 { font-size:30px; margin:0 0 12px; line-height:1.2; }
   .hero .lead { color:var(--muted); max-width:620px; margin:0 auto 22px; font-size:16px; line-height:1.5; }
   button.big { padding:12px 26px; font-size:16px; }
@@ -97,15 +103,16 @@
 </head>
 <body>
 <header>
-  <h1>Job Tracker</h1>
+  <a class="brand" href="/"><img src="/icons/icon-192.png" alt="" width="34" height="34"><span class="bn"><h1>Next<span>Step</span></h1><small>Stay on top of every application.</small></span></a>
   <div class="row"><button id="themeBtn" class="ghost small" title="Switch light / dark">Light</button>
     <div id="who" class="row hidden"><button id="installBtn" class="ghost small hidden">Install app</button><span id="whoName" class="muted"></span><button class="ghost small" id="signOut">Sign out</button></div></div>
 </header>
 <main>
   <div id="signedOut" class="hidden">
     <section class="hero">
+      <img class="herologo" src="/icons/icon-512.png" alt="NextStep" width="84" height="84">
       <h1>Your job search, organised from your inbox</h1>
-      <p class="lead">Job Tracker reads your application emails, keeps every company and status in one place, and helps you tailor your CV and reply to recruiters.</p>
+      <p class="lead">NextStep reads your application emails, keeps every company and status in one place, and helps you tailor your CV and reply to recruiters.</p>
       <button id="signIn" class="big">Sign in with Google</button>
       <p id="authErr" class="err"></p>
     </section>
@@ -824,7 +831,7 @@ async function notifyScan(newApps, updatedApps) {
   if (!parts.length) return;
   const reg = swReg || (await navigator.serviceWorker?.ready);
   const opts = { body: parts.join(", "), icon: "/static/icons/icon-192.png", badge: "/static/icons/icon-192.png", tag: "scan" };
-  if (reg?.showNotification) reg.showNotification("Job Tracker", opts); else new Notification("Job Tracker", opts);
+  if (reg?.showNotification) reg.showNotification("NextStep", opts); else new Notification("NextStep", opts);
 }
 notifState();
 

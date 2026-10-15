@@ -1,6 +1,6 @@
 {
-  "name": "Job Tracker",
-  "short_name": "Job Tracker",
+  "name": "NextStep",
+  "short_name": "NextStep",
   "description": "Track job applications from your Gmail and tailor your CV and cover letters with AI.",
   "id": "/",
   "start_url": "/",
