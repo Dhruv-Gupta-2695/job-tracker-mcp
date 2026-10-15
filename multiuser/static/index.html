@@ -41,6 +41,17 @@
   a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
   .muted { color:var(--muted); font-size:13px; }
   .err { color:var(--red); font-size:14px; } .ok { color:var(--green); font-size:14px; }
+  .hero { text-align:center; padding:48px 16px 28px; }
+  .hero h1 { font-size:30px; margin:0 0 12px; line-height:1.2; }
+  .hero .lead { color:var(--muted); max-width:620px; margin:0 auto 22px; font-size:16px; line-height:1.5; }
+  button.big { padding:12px 26px; font-size:16px; }
+  .steps { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px; margin:8px 0 18px; }
+  .step { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; }
+  .step h3 { margin:8px 0 4px; font-size:15px; }
+  .step p { margin:0; font-size:13px; line-height:1.45; }
+  .step .n { display:inline-flex; width:26px; height:26px; border-radius:50%; align-items:center; justify-content:center; background:var(--accent); color:#fff; font-weight:600; font-size:13px; }
+  .why ul { margin:8px 0 0; padding-left:20px; line-height:1.55; font-size:14px; }
+  .why li { margin-bottom:8px; }
   .center { text-align:center; padding:60px 20px; }
   .row { display:flex; gap:10px; align-items:center; }
   .badge { background:var(--field); border:1px solid var(--border); border-radius:12px; padding:3px 10px; font-size:12px; color:var(--muted); }
@@ -91,11 +102,26 @@
     <div id="who" class="row hidden"><button id="installBtn" class="ghost small hidden">Install app</button><span id="whoName" class="muted"></span><button class="ghost small" id="signOut">Sign out</button></div></div>
 </header>
 <main>
-  <div id="signedOut" class="card center hidden">
-    <h2>Track your job applications</h2>
-    <p class="muted">Sign in with Google. Your data is private to your account.</p>
-    <button id="signIn">Sign in with Google</button>
-    <p id="authErr" class="err"></p>
+  <div id="signedOut" class="hidden">
+    <section class="hero">
+      <h1>Your job search, organised from your inbox</h1>
+      <p class="lead">Job Tracker reads your application emails, keeps every company and status in one place, and helps you tailor your CV and reply to recruiters.</p>
+      <button id="signIn" class="big">Sign in with Google</button>
+      <p id="authErr" class="err"></p>
+    </section>
+    <section class="steps">
+      <div class="step"><span class="n">1</span><h3>Connect Gmail</h3><p class="muted">Sign in, then allow read-only access to your inbox.</p></div>
+      <div class="step"><span class="n">2</span><h3>We scan and sort</h3><p class="muted">Applications, interviews, offers and rejections are picked out and tracked for you.</p></div>
+      <div class="step"><span class="n">3</span><h3>Tailor and reply</h3><p class="muted">Generate a CV and cover letter per job, and draft replies that you review before anything is sent.</p></div>
+    </section>
+    <section class="why card">
+      <h2>Why Google sign-in only?</h2>
+      <ul>
+        <li><strong>Your applications live in Gmail.</strong> Confirmations, interview invites and rejections arrive in your inbox, so the account you sign in with is the one we read. There is nothing to import by hand.</li>
+        <li><strong>Read-only by default.</strong> We can only read emails until you choose Allow replies later, and nothing is ever sent without you reviewing and confirming it.</li>
+        <li><strong>Private to you.</strong> Your data is stored under your account only, and you can delete all of it at any time.</li>
+      </ul>
+    </section>
   </div>
 
   <div id="signedIn" class="hidden">
