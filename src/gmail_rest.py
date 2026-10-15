@@ -27,7 +27,15 @@ def _check(resp: requests.Response) -> None:
 
 
 def _fetch_one(session: requests.Session, headers: dict, message_id: str) -> EmailMessage | None:
-    resp = session.get(f"{BASE}/messages/{message_id}", params={"format": "full"}, headers=headers, timeout=20)
+    import time
+    resp = None
+    for attempt in range(4):
+        resp = session.get(f"{BASE}/messages/{message_id}", params={"format": "full"}, headers=headers, timeout=20)
+        # Gmail answers 429 (too many requests) or a 403 "rateLimitExceeded" when asked too fast: wait and retry.
+        throttled = resp.status_code == 429 or (resp.status_code == 403 and "ratelimit" in resp.text.lower()) or resp.status_code >= 500
+        if not throttled:
+            break
+        time.sleep(1.5 * (attempt + 1))
     if resp.status_code == 404:
         return None
     _check(resp)
@@ -64,7 +72,7 @@ def list_message_ids(access_token: str, after: datetime, skip_ids: set[str] | No
 
 def fetch_messages(access_token: str, ids: list[str]) -> list[EmailMessage]:
     headers = {"Authorization": f"Bearer {access_token}"}
-    with requests.Session() as session, ThreadPoolExecutor(max_workers=6) as pool:
+    with requests.Session() as session, ThreadPoolExecutor(max_workers=4) as pool:
         fetched = list(pool.map(lambda i: _fetch_one(session, headers, i), ids))
     return [m for m in fetched if m is not None]
 
@@ -87,6 +95,6 @@ def fetch_messages_since(access_token: str, after: datetime, skip_ids: set[str] 
             if not token:
                 break
         ids = ids[:MAX_MESSAGES]
-        with ThreadPoolExecutor(max_workers=6) as pool:
+        with ThreadPoolExecutor(max_workers=4) as pool:
             fetched = list(pool.map(lambda i: _fetch_one(session, headers, i), ids))
     return [m for m in fetched if m is not None]
