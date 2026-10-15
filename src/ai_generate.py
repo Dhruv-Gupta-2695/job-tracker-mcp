@@ -14,6 +14,7 @@ from google import genai
 from . import config, prompts
 
 MAX_OUTPUT_TOKENS = 2000
+CV_JSON_TOKENS = 6000
 _client_cache = None
 
 
@@ -38,12 +39,14 @@ def _client() -> genai.Client:
 
 FALLBACK_MODEL = "gemini-flash-lite-latest"
 _RETRY_DELAYS = (2,)  # one quick retry on the main model, then the fallback model
-REQUEST_TIMEOUT_MS = 20_000  # no single attempt may hang longer than this
+REQUEST_TIMEOUT_MS = 45_000  # no single attempt may hang longer than this
 _RETRYABLE_CODES = (429, 500, 503, 504)
 
 
-def _config_for(model: str, max_tokens: int, thinking_off: bool):
+def _config_for(model: str, max_tokens: int, thinking_off: bool, json_mode: bool = False):
     kwargs = {"max_output_tokens": max_tokens}
+    if json_mode:
+        kwargs["response_mime_type"] = "application/json"
     # Flash models "think" before answering: slow, and it eats the token budget.
     # Short emails and CVs do not need it.
     if thinking_off and "flash" in model:
@@ -51,7 +54,7 @@ def _config_for(model: str, max_tokens: int, thinking_off: bool):
     return genai.types.GenerateContentConfig(**kwargs)
 
 
-def _call_model(prompt_text: str, max_tokens: int) -> str:
+def _call_model(prompt_text: str, max_tokens: int, json_mode: bool = False) -> str:
     """Calls Gemini with a timeout, retrying temporary failures (overload,
     timeouts) once and then falling back to a lighter model. Raises
     RuntimeError with a plain message if it is still unavailable."""
@@ -72,7 +75,7 @@ def _call_model(prompt_text: str, max_tokens: int) -> str:
             try:
                 response = client.models.generate_content(
                     model=model, contents=prompt_text,
-                    config=_config_for(model, max_tokens, thinking_off),
+                    config=_config_for(model, max_tokens, thinking_off, json_mode),
                 )
                 return (response.text or "").strip()
             except errors.APIError as exc:
@@ -123,10 +126,65 @@ def generate_text(prompt_text: str, max_tokens: int = 800) -> str:
 
 
 def tailor_cv(core_cv: str, job_description: str) -> str:
-    """Returns the tailored CV as plain text (ready for pdf_export.py)."""
+    """Legacy plain-text tailoring (kept for the prompt editor); the portal now uses tailor_cv_struct."""
     return _generate("cv_tailor", core_cv, job_description)
 
 
-def generate_cover_letter(core_cv: str, job_description: str) -> str:
-    """Returns the cover letter body as plain text (ready for pdf_export.py)."""
-    return _generate("cover_letter", core_cv, job_description)
+def parse_cv_struct(cv_text: str, links: list[str]) -> dict:
+    """One-time: turns the core CV text into the structured model (see cv_struct.py)."""
+    from . import cv_struct
+    _client()  # fail fast on a missing key
+    prompt = cv_struct.PARSE_PROMPT.replace("{links}", "\n".join(links) or "(none)").replace("{cv_text}", cv_text)
+    last = None
+    for _ in range(2):
+        try:
+            cv = cv_struct.normalize(cv_struct.parse_json(_call_model(prompt, CV_JSON_TOKENS, json_mode=True)))
+            cv_struct.check_parse_fidelity(cv, cv_text)
+            _clean_links(cv, links)
+            return cv
+        except (ValueError, KeyError) as exc:
+            last = exc
+    raise RuntimeError(f"Could not read your CV's structure: {last}")
+
+
+def _clean_links(cv: dict, links: list[str]) -> None:
+    """Only URLs that really exist in the uploaded file may appear."""
+    if not links:
+        return
+    ok = set(links)
+    for c in cv["contact"]:
+        if c.get("url") and c["url"] not in ok:
+            c["url"] = ""
+    for sec in cv["sections"]:
+        for it in sec["items"]:
+            if it["type"] == "bullet" and it["link_url"] not in ok:
+                it["link_url"] = ""
+                it["link_label"] = ""
+
+
+def tailor_cv_struct(core_struct: dict, job_description: str) -> tuple[dict, dict]:
+    """Returns (final_cv, stats). Layout/structure always comes from core_struct;
+    only validated wording changes are taken from the AI."""
+    import json
+    from . import cv_struct
+    _client()
+    template = prompts.get_prompt("cv_tailor_json") or cv_struct.TAILOR_PROMPT
+    if "{core_cv_json}" not in template or "{job_description}" not in template:
+        template = cv_struct.TAILOR_PROMPT
+    prompt = template.replace("{core_cv_json}", json.dumps(core_struct, ensure_ascii=False)).replace("{job_description}", job_description)
+    try:
+        tailored = cv_struct.parse_json(_call_model(prompt, CV_JSON_TOKENS, json_mode=True))
+    except ValueError:
+        tailored = {}
+    return cv_struct.merge_tailored(core_struct, tailored)
+
+
+def generate_cover_letter(core_cv: str, job_description: str, company: str = "", position: str = "") -> str:
+    """Returns the cover letter BODY paragraphs as plain text (the PDF adds header, greeting and sign-off)."""
+    _client()
+    template = prompts.get_prompt("cover_letter_v2")
+    if "{core_cv}" not in template or "{job_description}" not in template:
+        template = prompts.DEFAULT_PROMPTS["cover_letter_v2"]
+    prompt = (template.replace("{company}", company or "the company").replace("{position}", position or "the role")
+              .replace("{core_cv}", core_cv).replace("{job_description}", job_description))
+    return _call_model(prompt, MAX_OUTPUT_TOKENS)

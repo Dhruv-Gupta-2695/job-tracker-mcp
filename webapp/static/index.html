@@ -695,7 +695,9 @@ document.getElementById('saveCvBtn').addEventListener('click', async () => {
   try {
     const data = await api('/api/cv', { method: 'POST', body: form });
     document.getElementById('cvText').value = data.text;
-    msg.innerHTML = '<div class="status-msg ok">Core CV saved.</div>';
+    msg.innerHTML = data.structure_ok === false
+      ? `<div class="status-msg err">Core CV saved, but I could not read its layout yet (${esc(data.structure_error || 'unknown')}). It will be retried when you generate, or save again.</div>`
+      : '<div class="status-msg ok">Core CV saved. Layout and links captured.</div>';
     loadCv();
   } catch (e) {
     msg.innerHTML = `<div class="status-msg err">${e.message}</div>`;
