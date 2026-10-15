@@ -238,6 +238,16 @@ def firebase_auth_proxy(request: Request, path: str):
                     media_type=upstream.headers.get("content-type", "text/html"))
 
 
+@app.get("/privacy")
+def privacy():
+    return FileResponse(STATIC_DIR / "privacy.html")
+
+
+@app.get("/terms")
+def terms():
+    return FileResponse(STATIC_DIR / "terms.html")
+
+
 @app.get("/")
 def index():
     return FileResponse(STATIC_DIR / "index.html")
