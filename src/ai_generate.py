@@ -9,9 +9,29 @@ plan and want the quality upgrade).
 """
 from __future__ import annotations
 
+import contextvars
+
 from google import genai
 
 from . import config, prompts
+
+# Multi-user mode: the caller's own Gemini key (never stored or cached) and default
+# prompts (no Google Sheet). Set per request with use_user_key(); both are
+# context-local so concurrent users never see each other's key.
+_request_key = contextvars.ContextVar("gemini_request_key", default=None)
+_defaults_only = contextvars.ContextVar("gemini_defaults_only", default=False)
+
+
+def use_user_key(api_key: str):
+    """Makes every Gemini call in the current context use this key and the built-in prompts."""
+    _request_key.set(api_key)
+    _defaults_only.set(True)
+
+
+def _get_prompt(name: str) -> str:
+    if _defaults_only.get():
+        return prompts.DEFAULT_PROMPTS.get(name, "")
+    return prompts.get_prompt(name)
 
 MAX_OUTPUT_TOKENS = 2000
 CV_JSON_TOKENS = 6000
@@ -19,6 +39,10 @@ _client_cache = None
 
 
 def _client() -> genai.Client:
+    user_key = _request_key.get()
+    if user_key:
+        # Per-request client: the key is not kept anywhere after the request.
+        return genai.Client(api_key=user_key, http_options=genai.types.HttpOptions(timeout=REQUEST_TIMEOUT_MS))
     if not config.GEMINI_API_KEY:
         raise RuntimeError(
             "GEMINI_API_KEY is not set. Get one for free at aistudio.google.com "
@@ -99,7 +123,7 @@ def _call_model(prompt_text: str, max_tokens: int, json_mode: bool = False) -> s
 
 def _generate(prompt_name: str, core_cv: str, job_description: str) -> str:
     client = _client()  # checked first: fail fast on a missing API key, before touching Sheets at all
-    template = prompts.get_prompt(prompt_name)
+    template = _get_prompt(prompt_name)
 
     # Checked explicitly rather than relying on str.format() to raise: a
     # template with a typo'd placeholder (e.g. "{corecv}") does raise
@@ -168,7 +192,7 @@ def tailor_cv_struct(core_struct: dict, job_description: str) -> tuple[dict, dic
     import json
     from . import cv_struct
     _client()
-    template = prompts.get_prompt("cv_tailor_json") or cv_struct.TAILOR_PROMPT
+    template = _get_prompt("cv_tailor_json") or cv_struct.TAILOR_PROMPT
     if "{core_cv_json}" not in template or "{job_description}" not in template:
         template = cv_struct.TAILOR_PROMPT
     prompt = template.replace("{core_cv_json}", json.dumps(core_struct, ensure_ascii=False)).replace("{job_description}", job_description)
@@ -182,7 +206,7 @@ def tailor_cv_struct(core_struct: dict, job_description: str) -> tuple[dict, dic
 def generate_cover_letter(core_cv: str, job_description: str, company: str = "", position: str = "") -> str:
     """Returns the cover letter BODY paragraphs as plain text (the PDF adds header, greeting and sign-off)."""
     _client()
-    template = prompts.get_prompt("cover_letter_v2")
+    template = _get_prompt("cover_letter_v2")
     if "{core_cv}" not in template or "{job_description}" not in template:
         template = prompts.DEFAULT_PROMPTS["cover_letter_v2"]
     prompt = (template.replace("{company}", company or "the company").replace("{position}", position or "the role")

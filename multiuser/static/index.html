@@ -20,6 +20,15 @@
   .row { display:flex; gap:10px; align-items:center; }
   .badge { background:#eef2f7; border-radius:12px; padding:3px 10px; font-size:12px; color:var(--navy); }
   .hidden { display:none; }
+  nav { display:flex; gap:6px; margin-bottom:16px; }
+  nav button { background:#fff; color:var(--navy); border:1px solid var(--line); }
+  nav button.on { background:var(--navy); color:#fff; border-color:var(--navy); }
+  input, textarea { width:100%; padding:9px 10px; border:1px solid #c9ced6; border-radius:8px; font:inherit; margin:4px 0 10px; }
+  textarea { min-height:140px; resize:vertical; }
+  label { font-size:13px; color:var(--grey); }
+  .ok { color:#0a7a3d; font-size:14px; }
+  pre { white-space:pre-wrap; background:#f3f5f8; padding:12px; border-radius:8px; font-size:13px; max-height:260px; overflow:auto; }
+  .hist { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-top:1px solid var(--line); }
 </style>
 </head>
 <body>
@@ -36,16 +45,64 @@
   </div>
 
   <div id="signedIn" class="hidden">
-    <div class="card">
-      <div class="row"><strong>Signed in</strong><span class="badge" id="uidBadge"></span></div>
-      <p class="muted" id="meInfo">Checking with the server...</p>
-    </div>
-    <div class="card">
-      <strong>Your workspace</strong>
-      <p class="muted">Dashboard, CV generator and Gmail scan arrive in the next milestones. This page proves that sign-in works and that your data space is separate from everyone else's.</p>
-      <div class="row"><button id="saveNote">Save a test note</button><span id="noteStatus" class="muted"></span></div>
-      <p class="muted" id="noteText"></p>
-    </div>
+    <div class="card row"><strong>Signed in</strong><span class="badge" id="uidBadge"></span><span class="muted" id="meInfo"></span></div>
+    <nav>
+      <button data-tab="setup" class="on">1. Setup</button>
+      <button data-tab="cv">2. Your CV</button>
+      <button data-tab="gen">3. Generate</button>
+    </nav>
+
+    <section id="tab-setup">
+      <div class="card">
+        <strong>Your Gemini key</strong>
+        <p class="muted">Get a free key at aistudio.google.com (no card needed). It is encrypted in this browser with your passphrase before it is saved, so nobody else, including the site owner, can read it. Forget the passphrase and you just enter your key again.</p>
+        <div id="vaultNew" class="hidden">
+          <label>Gemini API key</label><input id="keyIn" type="password" autocomplete="off" placeholder="AIza...">
+          <label>Choose a passphrase (8+ characters)</label><input id="pass1" type="password" autocomplete="new-password">
+          <label>Repeat passphrase</label><input id="pass2" type="password" autocomplete="new-password">
+          <button id="vaultSave">Encrypt and save</button>
+        </div>
+        <div id="vaultLocked" class="hidden">
+          <label>Passphrase</label><input id="passUnlock" type="password" autocomplete="current-password">
+          <div class="row"><button id="vaultUnlock">Unlock</button><button class="ghost" id="vaultRemove">Remove saved key</button></div>
+        </div>
+        <div id="vaultOpen" class="hidden">
+          <p class="ok">Key unlocked for this session.</p>
+          <div class="row"><button id="keyTest" class="ghost">Test key</button><button id="vaultLock" class="ghost">Lock</button></div>
+        </div>
+        <p id="vaultMsg" class="muted"></p>
+      </div>
+    </section>
+
+    <section id="tab-cv" class="hidden">
+      <div class="card">
+        <strong>Your core CV</strong>
+        <p class="muted" id="cvInfo">No CV saved yet.</p>
+        <label>Upload a PDF, DOCX or text file (PDF keeps your links)</label>
+        <input id="cvFile" type="file" accept=".pdf,.docx,.txt,.md">
+        <label>or paste the text</label>
+        <textarea id="cvText"></textarea>
+        <button id="cvSave">Read and save my CV</button>
+        <p id="cvMsg" class="muted"></p>
+      </div>
+    </section>
+
+    <section id="tab-gen" class="hidden">
+      <div class="card">
+        <strong>Generate a tailored CV and cover letter</strong>
+        <label>Company</label><input id="gCompany">
+        <label>Position</label><input id="gPosition">
+        <label>Job description</label><textarea id="gJd"></textarea>
+        <button id="gBtn">Generate</button>
+        <p id="gMsg" class="muted"></p>
+        <div id="gOut" class="hidden">
+          <div class="row"><button id="dlCv" class="ghost">Download CV (PDF)</button><button id="dlLetter" class="ghost">Download cover letter (PDF)</button></div>
+          <p class="muted" id="gNote"></p>
+          <pre id="gLetter"></pre>
+        </div>
+      </div>
+      <div class="card"><strong>Previous generations</strong><div id="hist" class="muted">Nothing yet.</div></div>
+    </section>
   </div>
 </main>
 
@@ -70,14 +127,148 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const $ = (id) => document.getElementById(id);
 
-// Authenticated call to this portal's server.
-window.apiFetch = async (path, opts = {}) => {
+import { collection, addDoc, getDocs, query, orderBy, limit, deleteDoc }
+  from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+let geminiKey = null;     // lives only in memory for this tab session
+let coreCv = null;        // {text, struct, filename}
+
+const api = async (path, opts = {}) => {
   const token = await auth.currentUser.getIdToken();
-  const r = await fetch(path, { ...opts, headers: { ...(opts.headers || {}), Authorization: `Bearer ${token}` } });
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `Server error ${r.status}`);
-  return r.json();
+  const headers = { ...(opts.headers || {}), Authorization: `Bearer ${token}` };
+  if (opts.needsKey) headers["X-Gemini-Key"] = geminiKey;
+  const r = await fetch(path, { ...opts, headers });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || `Server error ${r.status}`);
+  return body;
 };
 
+// ---------- vault: AES-GCM key from a passphrase (PBKDF2) ----------
+const enc = new TextEncoder(), dec = new TextDecoder();
+const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = (s) => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function deriveKey(pass, salt) {
+  const base = await crypto.subtle.importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 250000, hash: "SHA-256" }, base,
+    { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+const vaultRef = () => doc(db, "users", auth.currentUser.uid, "secrets", "gemini");
+async function vaultEncrypt(key, pass) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await deriveKey(pass, salt), enc.encode(key));
+  return { salt: b64(salt), iv: b64(iv), ct: b64(ct) };
+}
+async function vaultDecrypt(rec, pass) {
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(rec.iv) }, await deriveKey(pass, unb64(rec.salt)), unb64(rec.ct));
+  return dec.decode(pt);
+}
+async function refreshVault() {
+  const snap = await getDoc(vaultRef());
+  $("vaultNew").classList.toggle("hidden", snap.exists());
+  $("vaultLocked").classList.toggle("hidden", !snap.exists() || !!geminiKey);
+  $("vaultOpen").classList.toggle("hidden", !geminiKey);
+}
+$("vaultSave").onclick = async () => {
+  const key = $("keyIn").value.trim(), p1 = $("pass1").value, p2 = $("pass2").value;
+  if (!/^[A-Za-z0-9_\-]{20,80}$/.test(key)) { $("vaultMsg").textContent = "That does not look like a Gemini key."; return; }
+  if (p1.length < 8 || p1 !== p2) { $("vaultMsg").textContent = "Passphrases must match and be 8+ characters."; return; }
+  $("vaultMsg").textContent = "Encrypting...";
+  await setDoc(vaultRef(), { ...(await vaultEncrypt(key, p1)), updatedAt: serverTimestamp() });
+  geminiKey = key; $("keyIn").value = $("pass1").value = $("pass2").value = "";
+  $("vaultMsg").textContent = "Saved (encrypted). Unlocked for this session.";
+  await refreshVault();
+};
+$("vaultUnlock").onclick = async () => {
+  try {
+    geminiKey = await vaultDecrypt((await getDoc(vaultRef())).data(), $("passUnlock").value);
+    $("passUnlock").value = ""; $("vaultMsg").textContent = "";
+  } catch { $("vaultMsg").textContent = "Wrong passphrase."; }
+  await refreshVault();
+};
+$("vaultLock").onclick = async () => { geminiKey = null; await refreshVault(); };
+$("vaultRemove").onclick = async () => {
+  if (!confirm("Remove your saved key? You can add it again later.")) return;
+  await deleteDoc(vaultRef()); geminiKey = null; $("vaultMsg").textContent = "Removed."; await refreshVault();
+};
+$("keyTest").onclick = async () => {
+  $("vaultMsg").textContent = "Testing...";
+  try { await api("/api/gemini/check", { method: "POST", needsKey: true }); $("vaultMsg").textContent = "Your key works."; }
+  catch (e) { $("vaultMsg").textContent = e.message; }
+};
+
+// ---------- core CV ----------
+const cvRef = () => doc(db, "users", auth.currentUser.uid, "cv", "core");
+async function loadCv() {
+  const snap = await getDoc(cvRef());
+  if (!snap.exists()) { coreCv = null; $("cvInfo").textContent = "No CV saved yet."; return; }
+  const d = snap.data();
+  coreCv = { text: d.text, struct: JSON.parse(d.struct), filename: d.filename };
+  $("cvInfo").textContent = `Saved: ${d.filename} (${coreCv.struct.sections.length} sections).`;
+}
+$("cvSave").onclick = async () => {
+  if (!geminiKey) { $("cvMsg").textContent = "Unlock your Gemini key in Setup first."; return; }
+  const file = $("cvFile").files[0], text = $("cvText").value;
+  if (!file && !text.trim()) { $("cvMsg").textContent = "Choose a file or paste your CV."; return; }
+  const form = new FormData();
+  if (file) form.append("file", file); else form.append("text", text);
+  $("cvMsg").textContent = "Reading your CV (about 15 seconds)...";
+  try {
+    const r = await api("/api/cv/parse", { method: "POST", body: form, needsKey: true });
+    await setDoc(cvRef(), { text: r.text, struct: JSON.stringify(r.struct), filename: r.filename, updatedAt: serverTimestamp() });
+    await loadCv();
+    $("cvMsg").textContent = `Saved. Layout read, ${r.links_found} link(s) captured.`;
+  } catch (e) { $("cvMsg").textContent = e.message; }
+};
+
+// ---------- generate ----------
+let lastOut = null;
+const download = (b64s, name) => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([unb64(b64s)], { type: "application/pdf" }));
+  a.download = name; a.click();
+};
+$("gBtn").onclick = async () => {
+  if (!geminiKey) { $("gMsg").textContent = "Unlock your Gemini key in Setup first."; return; }
+  if (!coreCv) { $("gMsg").textContent = "Save your CV first."; return; }
+  const company = $("gCompany").value.trim(), position = $("gPosition").value.trim(), jd = $("gJd").value;
+  if (!company || !position || !jd.trim()) { $("gMsg").textContent = "Fill in company, position and job description."; return; }
+  $("gMsg").textContent = "Generating (up to a minute)..."; $("gOut").classList.add("hidden");
+  try {
+    const r = await api("/api/generate", { method: "POST", needsKey: true, headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ core_struct: coreCv.struct, core_text: coreCv.text, company, position, job_description: jd }) });
+    lastOut = { company, position, ...r };
+    $("gLetter").textContent = r.letter_text;
+    $("gNote").textContent = `CV: ${r.cv_pages} page(s), ${r.cv_changes} wording change(s). Cover letter below.`;
+    $("gOut").classList.remove("hidden"); $("gMsg").textContent = "";
+    await addDoc(collection(db, "users", auth.currentUser.uid, "generated"), {
+      company, position, createdAt: serverTimestamp(), cvPdf: r.cv_pdf_b64, letterPdf: r.letter_pdf_b64,
+      cvText: r.cv_text, letterText: r.letter_text });
+    loadHistory();
+  } catch (e) { $("gMsg").textContent = e.message; }
+};
+$("dlCv").onclick = () => lastOut && download(lastOut.cv_pdf_b64, `CV - ${lastOut.company} - ${lastOut.position}.pdf`);
+$("dlLetter").onclick = () => lastOut && download(lastOut.letter_pdf_b64, `Cover Letter - ${lastOut.company} - ${lastOut.position}.pdf`);
+async function loadHistory() {
+  const snap = await getDocs(query(collection(db, "users", auth.currentUser.uid, "generated"), orderBy("createdAt", "desc"), limit(15)));
+  const box = $("hist"); box.textContent = "";
+  if (snap.empty) { box.textContent = "Nothing yet."; return; }
+  snap.forEach((d) => {
+    const x = d.data(), row = document.createElement("div"); row.className = "hist";
+    const label = document.createElement("span"); label.textContent = `${x.company} - ${x.position}`;
+    const btns = document.createElement("span");
+    for (const [t, k] of [["CV", "cvPdf"], ["Letter", "letterPdf"]]) {
+      const b = document.createElement("button"); b.className = "ghost"; b.textContent = t; b.style.marginLeft = "6px";
+      b.onclick = () => download(x[k], `${t} - ${x.company} - ${x.position}.pdf`); btns.appendChild(b);
+    }
+    row.append(label, btns); box.appendChild(row);
+  });
+}
+
+// ---------- tabs and sign-in ----------
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b));
+  for (const t of ["setup", "cv", "gen"]) $("tab-" + t).classList.toggle("hidden", t !== b.dataset.tab);
+});
 $("signIn").onclick = async () => {
   $("authErr").textContent = "";
   try { await signInWithPopup(auth, new GoogleAuthProvider()); }
@@ -85,7 +276,7 @@ $("signIn").onclick = async () => {
       ? "This website address is not allowed yet. Add it under Firebase > Authentication > Settings > Authorized domains."
       : (e.message || "Sign-in failed."); }
 };
-$("signOut").onclick = () => signOut(auth);
+$("signOut").onclick = () => { geminiKey = null; coreCv = null; signOut(auth); };
 
 onAuthStateChanged(auth, async (user) => {
   $("signedOut").classList.toggle("hidden", !!user);
@@ -94,25 +285,11 @@ onAuthStateChanged(auth, async (user) => {
   if (!user) return;
   $("whoName").textContent = user.displayName || user.email;
   $("uidBadge").textContent = "id " + user.uid.slice(0, 6) + "...";
-  try {
-    const me = await window.apiFetch("/api/me");
-    $("meInfo").textContent = `Server verified you as ${me.email}.`;
-  } catch (e) { $("meInfo").textContent = "Server check failed: " + e.message; }
-  try {
-    const snap = await getDoc(doc(db, "users", user.uid, "notes", "test"));
-    $("noteText").textContent = snap.exists() ? "Saved note: " + snap.data().text : "";
-  } catch (e) { $("noteText").textContent = "Could not read your data: " + e.message; }
+  try { const me = await api("/api/me"); $("meInfo").textContent = `Server verified ${me.email}.`; }
+  catch (e) { $("meInfo").textContent = "Server check failed: " + e.message; }
+  try { await refreshVault(); await loadCv(); await loadHistory(); }
+  catch (e) { $("vaultMsg").textContent = "Could not read your data: " + e.message; }
 });
-
-$("saveNote").onclick = async () => {
-  const user = auth.currentUser;
-  try {
-    await setDoc(doc(db, "users", user.uid, "notes", "test"),
-      { text: "Hello from " + new Date().toLocaleString(), at: serverTimestamp() });
-    $("noteStatus").textContent = "Saved.";
-    $("noteText").textContent = "Saved note written to your private space.";
-  } catch (e) { $("noteStatus").textContent = "Failed: " + e.message; }
-};
 </script>
 </body>
 </html>
