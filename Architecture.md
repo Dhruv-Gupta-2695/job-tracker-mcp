@@ -74,27 +74,38 @@ Goal: the Status column can be trusted, and each scan runs exactly once.
 Exit check: after deploy, run `python3 repair_positions.py` (preview, then `--apply`); confirm the next two scheduled scans fire once each at 12:00 and 19:00 IST; confirm Swymcorp shows `interview`.
 
 ### Phase 6: Multi-user accounts (current, branch `phase-6-multi-user`)
-Goal: let other job seekers use the portal with their own Google account and their own free Gemini key, at no running cost to the owner, and without the owner or other users being able to read their data or keys.
+Goal: other job seekers use the portal with their own Google account and their own free Gemini key, at no running cost to the owner, with the owner unable to read their data or keys.
 
-Requirements
-- Each user signs in, connects their own Gmail, and owns their own data (applications, core CV, generated files, prompts, settings). Nothing is shared between users.
-- Bring-your-own Gemini key: each user pastes a key from aistudio.google.com (free tier, no card). The owner's key is never used for other users, so the owner pays nothing and the free-tier quota is per user.
-- Keys and Google tokens are stored encrypted and are never sent back to the browser or written to logs.
-- Everything must stay inside free tiers: hosting, auth, database and storage.
+Decisions (confirmed)
+- Data store: Firestore (Firebase free tier). Each user's data sits under `users/{uid}` and security rules allow only that user.
+- Scanning: on demand, when the user opens the portal or clicks Scan. No schedules and no per-user servers.
+- Secrets: nothing secret is stored on the server. See the design below.
+- First release: sign-in, own data, own Gemini key, Gmail connection and scan per user. Reply writer and send, and the pipeline board and export, come after the first release.
+- The existing single-user instance stays as it is while this is built beside it (new code under `multiuser/`, reusing `src/` modules).
 
-Proposed building blocks (to be confirmed in the design step)
-- Firebase Auth for sign-in; Firestore with per-user security rules for application data; encrypted per-user secrets.
-- Scanning moves from one shared GitHub Actions job to a per-user scan the user can trigger, with scheduled runs only if the free tier allows.
-- HubSpot-style pipeline board with user-editable stages; spreadsheet export; bring-your-own Telegram bot; stateless tailoring flow.
+Design
+1. Sign-in: Firebase Auth with Google. The browser holds the login; the server only verifies the Firebase ID token on each call and learns the user id. It keeps no sessions.
+2. Stateless server: the multi-user server stores nothing. The browser reads and writes Firestore directly (rules: `request.auth.uid == userId`). For work that needs Python (CV parsing and tailoring, PDF drawing, email classification), the browser sends the inputs, the server computes and returns the result, and the browser saves it. The server needs no database credentials, so the owner cannot read user data through it.
+3. Gemini key: the user pastes their own key once. It is encrypted in the browser (AES-GCM, key derived from a vault passphrase with PBKDF2) and only the encrypted text is stored in Firestore. Per session the user unlocks it with the passphrase; the browser sends the key in a request header for each AI call over HTTPS; the server uses it for that call and discards it. Logs never include headers or bodies. Note: Google sign-in has no secret to derive a key from, so a passphrase is needed. A forgotten passphrase means the user enters their key again.
+4. Gmail: no Gmail tokens are stored. The browser asks Google for a short-lived access token (Google Identity Services, `gmail.readonly`) when the user scans, sends it with the scan request, and the server reads the mail, classifies it and returns new applications. The token is used once and dropped. Reading new mail only needs read access; sending stays out of the first release.
+5. Limits: per-user rate limit and size caps on the server; scan window limited (for example the last 60 days on first scan); Gemini 429 from the user's own quota is shown plainly.
 
-Open questions and preconditions
-- Google's restricted-scope review for per-user Gmail access (gmail.readonly and gmail.compose), and the 100-user cap while the app is unverified.
-- Gemini free-tier limits per key and what the portal does when a user's quota is exhausted.
-- Where per-user secrets live safely on a free tier, and how the owner is kept unable to read them.
-- Data migration of the owner's current Sheet data into the new per-user store.
-- Whether the existing single-user instance stays as is while the multi-user version is built beside it.
+Milestones
+| # | Milestone | Exit check |
+|---|---|---|
+| M1 | Firebase project, Google sign-in, server verifies the ID token, empty per-user portal shell | Two different Google accounts sign in and see separate empty dashboards |
+| M2 | Gemini key vault, core CV upload and parse, CV and cover letter generation with the user's own key | A user generates a CV and letter; the owner's key is never used |
+| M3 | Gmail connect (access token), on-demand scan, applications in Firestore, dashboard and filters | A user's own applications appear and nobody else's do |
+| M4 | Hardening: security rules tests, rate limits, log scrubbing, error messages, docs; second-account test | Isolation checks pass and a fresh user can onboard unaided |
 
-Exit check: a second person can sign up, add their key, connect Gmail, see only their own applications and generate a CV, while the owner's data and key are untouched.
+Open risks
+- Google treats `gmail.readonly` as a restricted scope. Until the app passes Google's verification (which includes a paid security assessment), the OAuth app stays in testing mode: at most 100 named test users, an "unverified app" warning, and the owner must add each user's email. Plan for a small invited group first.
+- Gemini free-tier limits are per key; heavy use hits the user's own quota, not the owner's.
+- Firestore free tier (about 50k reads and 20k writes per day across all users) caps how many active users fit; the dashboard must read in pages and cache.
+- Render free tier still sleeps and has 512 MB; the stateless server should stay small.
+- Migrating the owner's current Sheet data into Firestore is optional and not part of the first release.
+
+Exit check: a second person signs up, adds their key, connects Gmail, sees only their own applications and generates a CV, while the owner's data and key are untouched.
 
 ### Future aspects (not scheduled)
 Ideas that are not part of any phase yet. Each is built only if it proves needed once the phase before it ships.
