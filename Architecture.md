@@ -2,7 +2,7 @@
 
 A personal job-application tracker that runs at zero cost. It reads your Gmail, records each application in a Google Sheet, tells you about replies on Telegram, and has a small web portal for viewing applications, tailoring CVs with AI, and writing or sending replies.
 
-Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 7 (multi-user) is the current phase; Phase 6 is parked.
+Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 6 (multi-user) is the current phase. Unscheduled ideas are listed under Future aspects.
 
 ## Delivery phases
 
@@ -73,14 +73,7 @@ Goal: the Status column can be trusted, and each scan runs exactly once.
 
 Exit check: after deploy, run `python3 repair_positions.py` (preview, then `--apply`); confirm the next two scheduled scans fire once each at 12:00 and 19:00 IST; confirm Swymcorp shows `interview`.
 
-### Phase 6: Follow-up reminders (parked)
-Decision: not started. It is built later only if it turns out to be needed after Phase 7.
-Goal: never forget to chase an application.
-- A "no reply in 7 days" list on the dashboard (applications still at `applied` older than 7 days, not rejected, with a replyable sender).
-- One-click Reply from the list using the existing reply window.
-- Reuses the sent log so a follow-up already sent does not reappear.
-
-### Phase 7: Multi-user accounts (current, branch `phase-7-multi-user`)
+### Phase 6: Multi-user accounts (current, branch `phase-6-multi-user`)
 Goal: let other job seekers use the portal with their own Google account and their own free Gemini key, at no running cost to the owner, and without the owner or other users being able to read their data or keys.
 
 Requirements
@@ -102,6 +95,15 @@ Open questions and preconditions
 - Whether the existing single-user instance stays as is while the multi-user version is built beside it.
 
 Exit check: a second person can sign up, add their key, connect Gmail, see only their own applications and generate a CV, while the owner's data and key are untouched.
+
+### Future aspects (not scheduled)
+Ideas that are not part of any phase yet. Each is built only if it proves needed once the phase before it ships.
+
+**Follow-up reminders**
+Goal: never forget to chase an application.
+- A "no reply in 7 days" list on the dashboard (applications still at `applied` older than 7 days, not rejected, with a replyable sender).
+- One-click Reply from the list using the existing reply window.
+- Reuses the sent log so a follow-up already sent does not reappear.
 
 ---
 
@@ -435,7 +437,7 @@ Two scans a day are a hard requirement (12:00 and 19:00 IST). GitHub's own `sche
 **Known limits**
 
 - Classification is heuristic. Unusual email layouts produce `Unknown position` and need a new parser rule.
-- Stage-progress emails are recorded as `interview`; there is no separate "shortlisted" stage until the Phase 7 pipeline board.
+- Stage-progress emails are recorded as `interview`; there is no separate "shortlisted" stage until the Phase 6 pipeline board.
 - A newer real outcome replaces an older one (for example `rejected` after `interview`), but a later `interview` after `rejected` also replaces it.
 - Applied Date has no time, so "Last 24 hours" means today and yesterday.
 - Single user: one shared password, one Google account, one Sheet.
@@ -443,4 +445,4 @@ Two scans a day are a hard requirement (12:00 and 19:00 IST). GitHub's own `sche
 - Gemini free tier can return 503 under load; retries and the fallback model reduce but do not remove this.
 - The Reply button is enabled or disabled from the original confirmation's sender; the server makes the final decision from the latest message.
 
-**Planned, not built:** Phase 7 (current) and Phase 6 (parked), see above.
+**Planned, not built:** Phase 6 (current) and the Future aspects list, see above.
