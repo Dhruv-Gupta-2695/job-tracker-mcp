@@ -81,6 +81,7 @@ Decisions (confirmed)
 - Scanning: on demand, when the user opens the portal or clicks Scan. No schedules and no per-user servers.
 - Secrets: nothing secret is stored on the server. See the design below.
 - First release: sign-in, own data, own Gemini key, Gmail connection and scan per user. Reply writer and send, and the pipeline board and export, come after the first release.
+- Ownership: the multi-user app runs under a separate project Google account (not the owner's personal one): the new Firebase project, Google Cloud OAuth app and consent screen, and its support email all belong to it. The personal account stays only for the existing single-user instance, whose Sheet and Gmail are personal.
 - The existing single-user instance stays as it is while this is built beside it (new code under `multiuser/`, reusing `src/` modules).
 
 Design
