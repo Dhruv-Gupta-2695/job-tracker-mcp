@@ -44,6 +44,11 @@
   .st { border-radius:10px; padding:2px 9px; font-size:12px; background:#eef2f7; }
   .st.interview { background:#e3f2ff; } .st.offer { background:#e2f7e8; } .st.rejected { background:#fde8e8; }
   select { padding:7px; border:1px solid #c9ced6; border-radius:8px; font:inherit; }
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; z-index:50; }
+  .modal .box { background:#fff; border-radius:12px; max-width:680px; width:100%; padding:20px; }
+  .last { background:#f3f5f8; border-radius:8px; padding:8px 10px; font-size:13px; color:var(--grey); margin:8px 0; }
+  .confirm { border:2px solid #f0d890; background:#fff8e6; border-radius:10px; padding:12px; margin-top:12px; }
+  button.small { padding:4px 10px; font-size:12px; }
   .hist { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-top:1px solid var(--line); }
 </style>
 </head>
@@ -112,6 +117,11 @@
         <p id="vaultMsg" class="muted"></p>
       </div>
       <div class="card">
+        <strong>Email replies</strong>
+        <p class="muted">Lets you write a reply with AI and save it to your Gmail Drafts (or send it, if the site owner has turned sending on). This asks Google for one extra permission, to create drafts and send mail. You can turn it off any time here, and remove the permission at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">your Google permissions page</a>.</p>
+        <div class="row"><button id="repAllow" class="ghost">Allow replies</button><button id="repOff" class="ghost hidden">Turn replies off</button><span id="repState" class="muted"></span></div>
+      </div>
+      <div class="card">
         <strong>Notifications</strong>
         <p class="muted">Get a notification on this device when a scan finds new applications or a rejection, interview or offer. They appear after a scan (the app also scans when you open it); there are no alerts while the app is closed. On iPhone, add the app to your Home Screen first.</p>
         <div class="row"><button id="notifBtn" class="ghost">Turn on notifications</button><span id="notifState" class="muted"></span></div>
@@ -161,6 +171,26 @@
       <div class="card"><strong>Previous generations</strong><div id="hist" class="muted">Nothing yet.</div></div>
     </section>
   </div>
+<div id="rm" class="modal hidden"><div class="box">
+  <div class="row" style="justify-content:space-between"><strong id="rmTitle"></strong><button class="ghost small" id="rmClose">Close</button></div>
+  <div class="last" id="rmLast">Last message: checking...</div>
+  <div id="rmNeed" class="hidden"><p class="muted">Allow replies first. This asks Google for permission to create drafts and send mail.</p><button id="rmAllow">Allow replies</button></div>
+  <div id="rmMain">
+    <label>What should the reply say? (optional)</label>
+    <textarea id="rmInstr" style="min-height:70px" placeholder="For example: ask about next steps, or confirm Thursday works"></textarea>
+    <button id="rmWrite" class="ghost">Write with AI</button>
+    <label style="display:block;margin-top:10px">Reply (you can edit it)</label>
+    <textarea id="rmBody" style="min-height:180px"></textarea>
+    <div class="row"><button id="rmDraft">Save to Gmail drafts</button><button id="rmReview" class="ghost hidden">Review and send</button></div>
+    <div id="rmConfirm" class="confirm hidden">
+      <strong>Check before sending</strong>
+      <p class="muted" id="rmConfirmTo"></p>
+      <pre id="rmConfirmBody"></pre>
+      <div class="row"><button id="rmSend">Send now</button><button id="rmCancel" class="ghost">Cancel</button></div>
+    </div>
+  </div>
+  <p id="rmMsg" class="muted"></p>
+</div></div>
 <p class="muted" style="text-align:center;margin-top:24px"><a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></p>
 </main>
 
@@ -404,19 +434,24 @@ let scanning = false, gmailToken = null, gmailTokenExp = 0, tokenClient = null, 
 const appsCol = () => collection(db, "users", auth.currentUser.uid, "apps");
 const metaRef = () => doc(db, "users", auth.currentUser.uid, "meta", "scan");
 
-function getGmailToken() {
+const GMAIL_COMPOSE = "https://www.googleapis.com/auth/gmail.compose";
+let repliesAllowed = false, gmailHasCompose = false, canSend = false;
+function getGmailToken(needCompose = false) {
   return new Promise((resolve, reject) => {
-    if (gmailToken && Date.now() < gmailTokenExp - 60000) return resolve(gmailToken);
+    const wantCompose = needCompose || repliesAllowed;
+    if (gmailToken && Date.now() < gmailTokenExp - 60000 && (!wantCompose || gmailHasCompose)) return resolve(gmailToken);
     if (!window.google?.accounts?.oauth2) return reject(new Error("Google sign-in script did not load. Reload the page."));
     tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID, scope: GMAIL_SCOPE, hint: auth.currentUser.email,
+      client_id: GOOGLE_CLIENT_ID, scope: wantCompose ? GMAIL_SCOPE + " " + GMAIL_COMPOSE : GMAIL_SCOPE, hint: auth.currentUser.email,
       callback: (r) => {
         if (r.error) return reject(new Error(r.error === "access_denied" ? "Gmail access was not allowed." : "Could not connect Gmail (" + r.error + ")."));
-        gmailToken = r.access_token; gmailTokenExp = Date.now() + (r.expires_in || 3600) * 1000; resolve(gmailToken);
+        gmailToken = r.access_token; gmailTokenExp = Date.now() + (r.expires_in || 3600) * 1000;
+        gmailHasCompose = google.accounts.oauth2.hasGrantedAllScopes(r, GMAIL_COMPOSE);
+        resolve(gmailToken);
       },
       error_callback: () => reject(new Error("The Gmail permission window was closed.")),
     });
-    tokenClient.requestAccessToken({ prompt: gmailToken === null && !metaScan.lastScanAt ? "consent" : "" });
+    tokenClient.requestAccessToken({ prompt: (needCompose && !repliesAllowed) || (gmailToken === null && !metaScan.lastScanAt) ? "consent" : "" });
   });
 }
 
@@ -515,6 +550,10 @@ function renderApps() {
     if ((a.gmailLink || "").startsWith("https://mail.google.com/")) {
       const l = document.createElement("a"); l.href = a.gmailLink; l.target = "_blank"; l.rel = "noopener"; l.textContent = "Open"; lTd.appendChild(l);
     }
+    const why = replyBlocked(a), rb = document.createElement("button");
+    rb.className = "ghost small"; rb.style.marginLeft = "6px"; rb.textContent = "Reply";
+    if (why) { rb.disabled = true; rb.title = why; } else rb.onclick = () => openReply(a);
+    lTd.appendChild(rb);
     tr.appendChild(lTd); body.appendChild(tr);
   });
   $("appEmpty").textContent = rows.length ? "" : (apps.length ? "No applications match these filters." : "No applications yet. Connect Gmail and scan.");
@@ -523,6 +562,119 @@ function renderApps() {
 ["fSearch", "fStatus", "fRange"].forEach((id) => $(id).addEventListener("input", () => { shown = 50; renderApps(); }));
 $("appMore").onclick = () => { shown += 50; renderApps(); };
 
+
+
+// ---------- replies: write with AI, save to Gmail drafts, guarded send ----------
+const BOARDS = ["wellfound.com", "linkedin.com", "indeed.com", "glassdoor.com", "naukri.com", "instahyre.com", "cutshort.io", "hirist.com", "foundit.in", "monster.com", "ziprecruiter.com", "otta.com"];
+const NO_REPLY = /(no[-_.]?reply|do[-_.]?not[-_.]?reply|mailer-daemon|postmaster|bounce)/i;
+function replyBlocked(a) {   // the server checks again; this only greys the button out early
+  if ((a.status || "") === "rejected") return "This application was rejected";
+  const m = (a.sender || "").match(/@([\w.-]+)/), d = m ? m[1].toLowerCase() : "";
+  if (BOARDS.some((b) => d === b || d.endsWith("." + b))) return "Arrived through a job board, replies would not reach the employer";
+  if (NO_REPLY.test(a.sender || "")) return "No-reply address";
+  return "";
+}
+const settingsRef = () => doc(db, "users", auth.currentUser.uid, "meta", "settings");
+const sentRef = () => doc(db, "users", auth.currentUser.uid, "meta", "sent");
+async function loadReplySettings() {
+  const s = await getDoc(settingsRef());
+  repliesAllowed = !!(s.exists() && s.data().repliesAllowed);
+  try { canSend = !!(await api("/api/config")).can_send; } catch { canSend = false; }
+  showRepState();
+}
+function showRepState() {
+  $("repState").textContent = repliesAllowed ? "On." : "Off.";
+  $("repAllow").classList.toggle("hidden", repliesAllowed);
+  $("repOff").classList.toggle("hidden", !repliesAllowed);
+}
+async function allowReplies() {
+  await getGmailToken(true);
+  repliesAllowed = true;
+  await setDoc(settingsRef(), { repliesAllowed: true }, { merge: true });
+  showRepState();
+}
+$("repAllow").onclick = async () => { try { await allowReplies(); } catch (e) { $("repState").textContent = e.message; } };
+$("repOff").onclick = async () => { repliesAllowed = false; await setDoc(settingsRef(), { repliesAllowed: false }, { merge: true }); showRepState(); };
+
+let rm = null;   // the reply being written: {app, confirm}
+const rmMsg = (t) => { $("rmMsg").textContent = t || ""; };
+const draftKey = () => "jt.replyDraft." + auth.currentUser.uid + "." + rm.app.threadId;
+const gmailHeaders = (token) => ({ "Content-Type": "application/json", "X-Gmail-Token": token });
+async function loadSentLog() { const s = await getDoc(sentRef()); return s.exists() ? (s.data().entries || []) : []; }
+
+async function openReply(a) {
+  rm = { app: a, confirm: null };
+  $("rmTitle").textContent = `Reply: ${a.company} - ${a.position}`;
+  $("rmLast").textContent = "Last message: checking..."; rmMsg("");
+  $("rmConfirm").classList.add("hidden");
+  $("rmBody").value = localStorage.getItem(draftKey()) || ""; $("rmInstr").value = "";
+  $("rmReview").classList.toggle("hidden", !canSend);
+  $("rm").classList.remove("hidden");
+  $("rmNeed").classList.toggle("hidden", repliesAllowed); $("rmMain").classList.toggle("hidden", !repliesAllowed);
+  if (repliesAllowed) loadLast();
+  else $("rmLast").textContent = "Allow replies to see the last message in this chain.";
+}
+async function loadLast() {
+  try {
+    const t = await getGmailToken(true);
+    const r = await api("/api/reply/context", { method: "POST", headers: gmailHeaders(t), body: JSON.stringify({ thread_id: rm.app.threadId }) });
+    $("rmLast").textContent = `Last message (${r.direction === "sent" ? "sent by you" : "received"}, ${new Date(r.date).toLocaleDateString()}): ${r.subject}`;
+  } catch (e) { $("rmLast").textContent = "Last message: " + e.message; }
+}
+$("rmClose").onclick = () => { $("rm").classList.add("hidden"); rm = null; };
+$("rmAllow").onclick = async () => {
+  try { await allowReplies(); $("rmNeed").classList.add("hidden"); $("rmMain").classList.remove("hidden"); $("rmReview").classList.toggle("hidden", !canSend); loadLast(); }
+  catch (e) { rmMsg(e.message); }
+};
+$("rmBody").addEventListener("input", () => { if (rm) { const v = $("rmBody").value; v ? localStorage.setItem(draftKey(), v) : localStorage.removeItem(draftKey()); $("rmConfirm").classList.add("hidden"); } });
+
+$("rmWrite").onclick = async () => {
+  if (!geminiKey) { rmMsg("Unlock your Gemini key in Setup first."); return; }
+  rmMsg("Writing...");
+  try {
+    const t = await getGmailToken(true);
+    const r = await api("/api/reply/write", { method: "POST", needsKey: true, headers: gmailHeaders(t),
+      body: JSON.stringify({ thread_id: rm.app.threadId, instructions: $("rmInstr").value, company: rm.app.company, position: rm.app.position,
+        status: rm.app.status, core_text: coreCv?.text || "", name: coreCv?.struct?.name || "" }) });
+    $("rmBody").value = r.body; localStorage.setItem(draftKey(), r.body);
+    rmMsg(`Draft ready for ${r.to}. Read it and edit anything you like.`);
+  } catch (e) { rmMsg(e.message); }
+};
+$("rmDraft").onclick = async () => {
+  rmMsg("Saving to Gmail drafts...");
+  try {
+    const t = await getGmailToken(true);
+    const r = await api("/api/reply/draft", { method: "POST", headers: gmailHeaders(t), body: JSON.stringify({ thread_id: rm.app.threadId, body: $("rmBody").value, status: rm.app.status }) });
+    rmMsg(`Saved to your Gmail drafts (to ${r.to}). Open Gmail to review and send it.`);
+  } catch (e) { rmMsg(e.message); }
+};
+$("rmReview").onclick = async () => {
+  rmMsg("Checking...");
+  try {
+    const t = await getGmailToken(true);
+    const r = await api("/api/reply/prepare", { method: "POST", headers: gmailHeaders(t),
+      body: JSON.stringify({ thread_id: rm.app.threadId, body: $("rmBody").value, company: rm.app.company, status: rm.app.status, sent_log: await loadSentLog() }) });
+    rm.confirm = r;
+    $("rmConfirmTo").textContent = `To: ${r.to}   Subject: ${r.subject}   (${r.sends_left_today} send(s) left today)`;
+    $("rmConfirmBody").textContent = r.body;
+    $("rmConfirm").classList.remove("hidden"); rmMsg("");
+  } catch (e) { rmMsg(e.message); }
+};
+$("rmCancel").onclick = () => { $("rmConfirm").classList.add("hidden"); rm.confirm = null; };
+$("rmSend").onclick = async () => {
+  if (!rm?.confirm) return;
+  $("rmSend").disabled = true; rmMsg("Sending...");
+  try {
+    const t = await getGmailToken(true), log = await loadSentLog();
+    const r = await api("/api/reply/send", { method: "POST", headers: gmailHeaders(t),
+      body: JSON.stringify({ thread_id: rm.app.threadId, body: rm.confirm.body, confirm_token: rm.confirm.confirm_token, company: rm.app.company, status: rm.app.status, sent_log: log }) });
+    if (r.entry) await setDoc(sentRef(), { entries: [...log, r.entry].slice(-150) });
+    localStorage.removeItem(draftKey());   // the sent text is not kept
+    $("rmBody").value = ""; $("rmConfirm").classList.add("hidden"); rm.confirm = null;
+    rmMsg(r.already_sent ? `That reply was already sent to ${r.to}.` : `Sent to ${r.to}.`);
+  } catch (e) { rmMsg(e.message); }
+  finally { $("rmSend").disabled = false; }
+};
 
 // ---------- PWA: install, notifications ----------
 let swReg = null, installEvent = null;
@@ -586,7 +738,7 @@ $("signIn").onclick = async () => {
       ? "This website address is not allowed yet. Add it under Firebase > Authentication > Settings > Authorized domains."
       : (e.message || "Sign-in failed."); }
 };
-$("signOut").onclick = () => { geminiKey = null; gmailToken = null; coreCv = null; apps = []; signOut(auth); };
+$("signOut").onclick = () => { geminiKey = null; gmailToken = null; gmailHasCompose = false; repliesAllowed = false; coreCv = null; apps = []; signOut(auth); };
 
 getRedirectResult(auth).catch((e) => { $("authErr").textContent = e.message || "Sign-in failed."; });
 
@@ -599,7 +751,7 @@ onAuthStateChanged(auth, async (user) => {
   $("uidBadge").textContent = "id " + user.uid.slice(0, 6) + "...";
   try { const me = await api("/api/me"); $("meInfo").textContent = `Server verified ${me.email}.`; }
   catch (e) { $("meInfo").textContent = "Server check failed: " + e.message; }
-  try { await refreshVault(); await loadCv(); await loadHistory(); await loadApps(); autoScanIfStale(); }
+  try { await refreshVault(); await loadCv(); await loadHistory(); await loadApps(); await loadReplySettings(); autoScanIfStale(); }
   catch (e) { $("vaultMsg").textContent = "Could not read your data: " + e.message; }
 });
 </script>
