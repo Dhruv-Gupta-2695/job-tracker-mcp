@@ -64,7 +64,7 @@ def me(user: dict = Depends(current_user)):
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_JD_CHARS = 20000
 MAX_CV_CHARS = 30000
-_RATE = {"generate": (6, 3600), "cv": (10, 3600), "check": (10, 600)}  # (calls, seconds) per user
+_RATE = {"generate": (6, 3600), "cv": (10, 3600), "check": (10, 600), "scan": (12, 3600)}  # (calls, seconds) per user
 _hits: dict[tuple[str, str], list[float]] = {}
 
 
@@ -236,6 +236,47 @@ def firebase_auth_proxy(request: Request, path: str):
         raise HTTPException(status_code=502, detail="Sign-in helper is unavailable. Try again.")
     return Response(content=upstream.content, status_code=upstream.status_code,
                     media_type=upstream.headers.get("content-type", "text/html"))
+
+
+class ScanRequest(BaseModel):
+    since_iso: str | None = None      # last scan time (UTC ISO); None = first scan
+    days: int = 60                    # look-back for a first scan
+    existing: list[dict] = []         # the user's current applications
+    seen_ids: list[str] = []          # message ids already processed
+    user_email: str = ""
+
+
+@app.post("/api/scan")
+def scan(req: ScanRequest, user: dict = Depends(current_user), x_gmail_token: str | None = Header(default=None)):
+    """Reads the user's Gmail with their short-lived access token (used for this call, never stored)
+    and returns only the new or changed applications. The browser saves them."""
+    from datetime import timedelta, timezone
+    from src import gmail_rest, scan_core
+    token = (x_gmail_token or "").strip()
+    if not token or len(token) > 4096:
+        raise HTTPException(status_code=400, detail="Connect Gmail first.")
+    if len(req.existing) > 3000 or len(req.seen_ids) > 6000:
+        raise HTTPException(status_code=400, detail="Too much data in one scan.")
+    rate_limit(user["uid"], "scan")
+    days = max(1, min(req.days, 180))
+    if req.since_iso:
+        try:
+            since = datetime.fromisoformat(req.since_iso.replace("Z", "+00:00"))
+            since = datetime.fromtimestamp(since.timestamp()) - timedelta(hours=1)  # small overlap; seen ids dedupe
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Bad scan time.")
+    else:
+        since = datetime.now() - timedelta(days=days)
+    try:
+        messages = gmail_rest.fetch_messages_since(token, since, set(req.seen_ids))
+    except gmail_rest.GmailTokenError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail="Could not read Gmail right now. Try again.") from exc
+    out = scan_core.process_messages(messages, req.existing, set(req.seen_ids), req.user_email or user.get("email", ""))
+    out["scanned"] = len(messages)
+    out["scanned_at"] = datetime.now(timezone.utc).isoformat()
+    return out
 
 
 @app.get("/privacy")

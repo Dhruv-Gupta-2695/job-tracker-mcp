@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Job Tracker</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root { --navy:#1f3a5f; --grey:#555; --line:#e3e6ea; }
   * { box-sizing:border-box; }
@@ -28,6 +29,15 @@
   label { font-size:13px; color:var(--grey); }
   .ok { color:#0a7a3d; font-size:14px; }
   pre { white-space:pre-wrap; background:#f3f5f8; padding:12px; border-radius:8px; font-size:13px; max-height:260px; overflow:auto; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:8px 6px; border-top:1px solid var(--line); vertical-align:top; }
+  th { color:var(--grey); font-weight:600; font-size:12px; text-transform:uppercase; }
+  .tiles { display:flex; gap:10px; flex-wrap:wrap; margin:12px 0; }
+  .tile { flex:1; min-width:90px; border:1px solid var(--line); border-radius:10px; padding:10px; text-align:center; }
+  .tile b { display:block; font-size:22px; color:var(--navy); }
+  .st { border-radius:10px; padding:2px 9px; font-size:12px; background:#eef2f7; }
+  .st.interview { background:#e3f2ff; } .st.offer { background:#e2f7e8; } .st.rejected { background:#fde8e8; }
+  select { padding:7px; border:1px solid #c9ced6; border-radius:8px; font:inherit; }
   .hist { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-top:1px solid var(--line); }
 </style>
 </head>
@@ -47,12 +57,35 @@
   <div id="signedIn" class="hidden">
     <div class="card row"><strong>Signed in</strong><span class="badge" id="uidBadge"></span><span class="muted" id="meInfo"></span></div>
     <nav>
-      <button data-tab="setup" class="on">1. Setup</button>
-      <button data-tab="cv">2. Your CV</button>
-      <button data-tab="gen">3. Generate</button>
+      <button data-tab="apps" class="on">Applications</button>
+      <button data-tab="setup">Setup</button>
+      <button data-tab="cv">Your CV</button>
+      <button data-tab="gen">Generate</button>
     </nav>
 
-    <section id="tab-setup">
+    <section id="tab-apps">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;flex-wrap:wrap">
+          <div><strong>Your applications</strong><div class="muted" id="scanInfo">Not scanned yet.</div></div>
+          <div class="row">
+            <select id="scanDays" title="How far back the first scan looks"><option value="30">First scan: 30 days</option><option value="60" selected>First scan: 60 days</option><option value="120">First scan: 120 days</option></select>
+            <button id="scanBtn">Connect Gmail and scan</button>
+          </div>
+        </div>
+        <p class="muted" id="scanMsg"></p>
+        <div class="tiles" id="tiles"></div>
+        <div class="row" style="flex-wrap:wrap">
+          <input id="fSearch" placeholder="Search company or position" style="max-width:260px;margin:0">
+          <select id="fStatus"><option value="">All statuses</option><option>applied</option><option>interview</option><option>offer</option><option>rejected</option><option>update</option></select>
+          <select id="fRange"><option value="0">All time</option><option value="1">Last 24 hours</option><option value="3">Last 3 days</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select>
+        </div>
+        <table style="margin-top:12px"><thead><tr><th>Company</th><th>Position</th><th>Status</th><th>Applied</th><th>Last update</th><th></th></tr></thead><tbody id="appRows"></tbody></table>
+        <p class="muted" id="appEmpty"></p>
+        <button class="ghost hidden" id="appMore">Show more</button>
+      </div>
+    </section>
+
+    <section id="tab-setup" class="hidden">
       <div class="card">
         <strong>Your Gemini key</strong>
         <p class="muted">Get a free key at aistudio.google.com (no card needed). It is encrypted in this browser with your passphrase before it is saved, so nobody else, including the site owner, can read it. Forget the passphrase and you just enter your key again.</p>
@@ -138,7 +171,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const $ = (id) => document.getElementById(id);
 
-import { collection, addDoc, getDocs, query, orderBy, limit, deleteDoc }
+import { collection, addDoc, getDocs, query, orderBy, limit, deleteDoc, writeBatch, updateDoc }
   from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 let geminiKey = null;     // lives only in memory for this tab session
@@ -308,10 +341,102 @@ async function loadHistory() {
   });
 }
 
+
+// ---------- applications: Gmail scan + dashboard ----------
+const GOOGLE_CLIENT_ID = "1043405535011-qnjs0cmuso9fofd31u7709l1hgioetkf.apps.googleusercontent.com";
+const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+let gmailToken = null, gmailTokenExp = 0, tokenClient = null, apps = [], metaScan = { lastScanAt: "", seenIds: [] }, shown = 50;
+const appsCol = () => collection(db, "users", auth.currentUser.uid, "apps");
+const metaRef = () => doc(db, "users", auth.currentUser.uid, "meta", "scan");
+
+function getGmailToken() {
+  return new Promise((resolve, reject) => {
+    if (gmailToken && Date.now() < gmailTokenExp - 60000) return resolve(gmailToken);
+    if (!window.google?.accounts?.oauth2) return reject(new Error("Google sign-in script did not load. Reload the page."));
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID, scope: GMAIL_SCOPE, hint: auth.currentUser.email,
+      callback: (r) => {
+        if (r.error) return reject(new Error(r.error === "access_denied" ? "Gmail access was not allowed." : "Could not connect Gmail (" + r.error + ")."));
+        gmailToken = r.access_token; gmailTokenExp = Date.now() + (r.expires_in || 3600) * 1000; resolve(gmailToken);
+      },
+      error_callback: () => reject(new Error("The Gmail permission window was closed.")),
+    });
+    tokenClient.requestAccessToken({ prompt: gmailToken === null && !metaScan.lastScanAt ? "consent" : "" });
+  });
+}
+
+async function loadApps() {
+  const [snap, meta] = await Promise.all([getDocs(appsCol()), getDoc(metaRef())]);
+  apps = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  metaScan = meta.exists() ? { lastScanAt: meta.data().lastScanAt || "", seenIds: meta.data().seenIds || [] } : { lastScanAt: "", seenIds: [] };
+  $("scanInfo").textContent = metaScan.lastScanAt ? "Last scan: " + new Date(metaScan.lastScanAt).toLocaleString() : "Not scanned yet.";
+  $("scanBtn").textContent = metaScan.lastScanAt ? "Scan for new mail" : "Connect Gmail and scan";
+  renderApps();
+}
+
+$("scanBtn").onclick = async () => {
+  $("scanBtn").disabled = true; $("scanMsg").textContent = "Connecting to Gmail...";
+  try {
+    const token = await getGmailToken();
+    $("scanMsg").textContent = "Reading your mail (can take up to a minute)...";
+    const existing = apps.map(({ id, ...a }) => a);
+    const r = await api("/api/scan", { method: "POST", headers: { "Content-Type": "application/json", "X-Gmail-Token": token },
+      body: JSON.stringify({ since_iso: metaScan.lastScanAt || null, days: +$("scanDays").value, existing,
+        seen_ids: metaScan.seenIds, user_email: auth.currentUser.email }) });
+    for (let i = 0; i < r.upserts.length; i += 400) {
+      const batch = writeBatch(db);
+      r.upserts.slice(i, i + 400).forEach((a) => batch.set(doc(appsCol(), a.threadId), a, { merge: true }));
+      await batch.commit();
+    }
+    const seen = [...new Set([...metaScan.seenIds, ...r.seen])].slice(-3000);
+    await setDoc(metaRef(), { lastScanAt: r.scanned_at, seenIds: seen });
+    await loadApps();
+    $("scanMsg").textContent = `Scanned ${r.scanned} email(s): ${r.new} new application(s), ${r.updated} updated.`;
+  } catch (e) {
+    if (/Connect Gmail again/.test(e.message)) gmailToken = null;
+    $("scanMsg").textContent = e.message;
+  } finally { $("scanBtn").disabled = false; }
+};
+
+function renderApps() {
+  const q = norm($("fSearch").value), st = $("fStatus").value, days = +$("fRange").value;
+  const cutoff = days ? new Date(Date.now() - days * 86400000).toISOString().slice(0, 10) : "";
+  const inRange = apps.filter((a) => !cutoff || (a.appliedDate || "") >= cutoff);
+  const counts = { applied: 0, interview: 0, offer: 0, rejected: 0, update: 0 };
+  inRange.forEach((a) => { if (counts[a.status] !== undefined) counts[a.status]++; });
+  const tiles = $("tiles"); tiles.textContent = "";
+  for (const [k, v] of [["Total", inRange.length], ...Object.entries(counts)]) {
+    const t = document.createElement("div"); t.className = "tile";
+    const b = document.createElement("b"); b.textContent = v; t.append(b, k[0].toUpperCase() + k.slice(1)); tiles.appendChild(t);
+  }
+  const rows = inRange.filter((a) => (!st || a.status === st) && (!q || norm(a.company + " " + a.position).includes(q)))
+    .sort((a, b) => (b.appliedDate || "").localeCompare(a.appliedDate || ""));
+  const body = $("appRows"); body.textContent = "";
+  rows.slice(0, shown).forEach((a) => {
+    const tr = document.createElement("tr");
+    const cell = (txt) => { const td = document.createElement("td"); td.textContent = txt || ""; tr.appendChild(td); return td; };
+    cell(a.company); cell(a.position);
+    const sTd = document.createElement("td"), sel = document.createElement("select");
+    ["applied", "interview", "offer", "rejected", "update"].forEach((o) => { const op = document.createElement("option"); op.textContent = o; op.selected = o === a.status; sel.appendChild(op); });
+    sel.onchange = async () => { a.status = sel.value; await updateDoc(doc(appsCol(), a.id), { status: sel.value }); renderApps(); };
+    sTd.appendChild(sel); tr.appendChild(sTd);
+    cell(a.appliedDate); cell((a.lastUpdate || "").slice(0, 10));
+    const lTd = document.createElement("td");
+    if ((a.gmailLink || "").startsWith("https://mail.google.com/")) {
+      const l = document.createElement("a"); l.href = a.gmailLink; l.target = "_blank"; l.rel = "noopener"; l.textContent = "Open"; lTd.appendChild(l);
+    }
+    tr.appendChild(lTd); body.appendChild(tr);
+  });
+  $("appEmpty").textContent = rows.length ? "" : (apps.length ? "No applications match these filters." : "No applications yet. Connect Gmail and scan.");
+  $("appMore").classList.toggle("hidden", rows.length <= shown);
+}
+["fSearch", "fStatus", "fRange"].forEach((id) => $(id).addEventListener("input", () => { shown = 50; renderApps(); }));
+$("appMore").onclick = () => { shown += 50; renderApps(); };
+
 // ---------- tabs and sign-in ----------
 document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
   document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b));
-  for (const t of ["setup", "cv", "gen"]) $("tab-" + t).classList.toggle("hidden", t !== b.dataset.tab);
+  for (const t of ["apps", "setup", "cv", "gen"]) $("tab-" + t).classList.toggle("hidden", t !== b.dataset.tab);
 });
 $("signIn").onclick = async () => {
   $("authErr").textContent = "";
@@ -322,7 +447,7 @@ $("signIn").onclick = async () => {
       ? "This website address is not allowed yet. Add it under Firebase > Authentication > Settings > Authorized domains."
       : (e.message || "Sign-in failed."); }
 };
-$("signOut").onclick = () => { geminiKey = null; coreCv = null; signOut(auth); };
+$("signOut").onclick = () => { geminiKey = null; gmailToken = null; coreCv = null; apps = []; signOut(auth); };
 
 getRedirectResult(auth).catch((e) => { $("authErr").textContent = e.message || "Sign-in failed."; });
 
@@ -335,7 +460,7 @@ onAuthStateChanged(auth, async (user) => {
   $("uidBadge").textContent = "id " + user.uid.slice(0, 6) + "...";
   try { const me = await api("/api/me"); $("meInfo").textContent = `Server verified ${me.email}.`; }
   catch (e) { $("meInfo").textContent = "Server check failed: " + e.message; }
-  try { await refreshVault(); await loadCv(); await loadHistory(); }
+  try { await refreshVault(); await loadCv(); await loadHistory(); await loadApps(); }
   catch (e) { $("vaultMsg").textContent = "Could not read your data: " + e.message; }
 });
 </script>
