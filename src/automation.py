@@ -29,11 +29,12 @@ from . import classifier, config, gmail_client, telegram_notify, tracker
 _cross_thread_updates: list[dict] = []
 
 
-def _handle_cross_thread_update(msg, notify: bool) -> bool:
-    """Try to attach a standalone outcome email ("An update from X") to an
-    already-tracked application by company name. Returns True if matched."""
-    hint = classifier.company_hint_from_update(msg)
-    if not hint:
+def _handle_cross_thread_update(msg, notify: bool, hint: str | None = None) -> bool:
+    """Try to attach a standalone outcome or progress email ("An update from
+    X", "you're through to the next stage") to an already-tracked application
+    by company name. Returns True if matched."""
+    hint = hint if hint is not None else classifier.company_hint_from_update(msg)
+    if not hint or hint == "Unknown":
         return False
     row_num, row = tracker.find_application_by_company(hint)
     if row_num is None:
@@ -102,6 +103,13 @@ def scan_new_applications(
 
         if classifier.is_status_update_email(msg):
             _handle_cross_thread_update(msg, notify)
+            continue
+
+        # Stage-progress mail ("you're through to the assignment stage") moves an
+        # existing application forward; it is never a new application. If no
+        # tracked application matches, it is dropped rather than added as a stray row.
+        if classifier.is_stage_progress_email(msg):
+            _handle_cross_thread_update(msg, notify, hint=classifier._guess_company(msg))
             continue
 
         result = classifier.classify_new_message(msg)

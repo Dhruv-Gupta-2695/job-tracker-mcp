@@ -137,6 +137,13 @@ def is_status_update_email(msg: EmailMessage) -> bool:
     return any(p in head for p in _STRONG_OFFER_PHRASES)
 
 
+def is_stage_progress_email(msg: EmailMessage) -> bool:
+    """A mid-process progress email ("you're through to the assignment stage").
+    It is news about an existing application, never a new one."""
+    head = f"{msg.subject}\n{msg.snippet}\n{msg.body[:800]}".lower()
+    return any(p in head for p in STAGE_PROGRESS_PHRASES)
+
+
 def company_hint_from_update(msg: EmailMessage) -> str:
     """Best guess at which employer an update email is about, so it can be
     matched to an already-tracked application even though job boards send
@@ -401,5 +408,8 @@ def classify_update(msg: EmailMessage) -> UpdateClassification:
     if any(phrase in text for phrase in REJECTION_PHRASES):
         return UpdateClassification(status="rejected")
     if any(phrase in text for phrase in INTERVIEW_PHRASES):
+        return UpdateClassification(status="interview")
+    # "You're through to the assignment stage": the process is moving forward.
+    if any(phrase in text for phrase in STAGE_PROGRESS_PHRASES):
         return UpdateClassification(status="interview")
     return UpdateClassification(status="update")

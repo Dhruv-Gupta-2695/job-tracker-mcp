@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from . import sheets_client
+from . import cv_struct, sheets_client
 
 RANGE = "_Prompts!A:B"
 
@@ -29,6 +29,26 @@ DEFAULT_PROMPTS = {
         "from the job description where genuinely applicable, and keep roughly the "
         "same overall length and section structure as the original. Output ONLY "
         "the tailored CV text, no commentary.\n\n"
+        "CORE CV:\n{core_cv}\n\nJOB DESCRIPTION:\n{job_description}"
+    ),
+    # JSON-aware CV prompt (the portal's generator). {core_cv_json} and {job_description} required.
+    "cv_tailor_json": cv_struct.TAILOR_PROMPT,
+    "cover_letter_v2": (
+        "Write the BODY of a short cover letter for the candidate below, applying to the role in the "
+        "JOB DESCRIPTION. Company: {company}. Role: {position}.\n\n"
+        "Format: exactly 4 short paragraphs separated by a blank line, 130 to 180 words in total. "
+        "No greeting, no sign-off, no name, no headings, no bullets (these are added automatically).\n"
+        "Paragraph 1: say you are applying for the role at the company, then one specific sentence showing "
+        "you understood what the company does or the problem this role works on.\n"
+        "Paragraph 2: the most relevant real experience from the CV, with its real figures, in plain sentences.\n"
+        "Paragraph 3: one relevant project or achievement from the CV and what it showed.\n"
+        "Paragraph 4: one honest line about a tool or skill in the job description that the CV does not show "
+        "(for example: I have not used X yet, but ...), then one short line on availability and being glad to talk.\n\n"
+        "Style: simple, direct, first person, human. Short sentences. No buzzwords or filler (passionate, thrive, "
+        "fast-paced, leverage, synergy, excited to, strong interest). No dashes of any kind between clauses.\n"
+        "Truth rules: use only facts and figures that are in the CV. Never invent employers, numbers, tools or "
+        "claims. If nothing in the CV is relevant to a point, keep it general rather than make something up.\n"
+        "Output only the 4 paragraphs.\n\n"
         "CORE CV:\n{core_cv}\n\nJOB DESCRIPTION:\n{job_description}"
     ),
     "cover_letter": (

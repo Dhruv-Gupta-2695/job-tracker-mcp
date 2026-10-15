@@ -1,12 +1,15 @@
 name: Job Tracker Scan
 
 on:
-  schedule:
-    # GitHub Actions schedules run in UTC. These correspond to 12:00pm and
-    # 7:00pm IST (UTC+5:30). Adjust if you're in a different timezone.
-    - cron: "30 6 * * *"   # 12:00 IST
-    - cron: "30 13 * * *"  # 19:00 IST
-  workflow_dispatch: {}  # lets you trigger a run manually from the Actions tab, for testing
+  # No `schedule:` here on purpose. Runs are triggered on time by cron-job.org
+  # (12:00 and 19:00 IST, calling the workflow_dispatch API), with a backup
+  # call to the webapp's /api/trigger-scan. GitHub's own cron is best-effort
+  # (late or skipped runs, and it would double up with the external trigger).
+  # To go back to GitHub's scheduler, re-add:
+  #   schedule:
+  #     - cron: "30 6 * * *"   # 12:00 IST
+  #     - cron: "30 13 * * *"  # 19:00 IST
+  workflow_dispatch: {}  # manual runs from the Actions tab, the webapp button, and cron-job.org
 
 jobs:
   scan:

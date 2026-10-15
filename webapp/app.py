@@ -28,11 +28,41 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from src import (  # noqa: E402
-    ai_generate, config, cv_store, cv_versions, github_trigger,
+    ai_generate, config, cv_store, cv_struct, cv_versions, github_trigger,
     pdf_export, prompts, reply_mail, similarity, tracker,
 )
 
 app = FastAPI(title="Job Tracker")
+
+
+@app.on_event("startup")
+async def _limit_threads():
+    """Fewer worker threads = less memory on the 512 MB free tier."""
+    import anyio.to_thread
+    anyio.to_thread.current_default_thread_limiter().total_tokens = 4
+
+
+def _rss_mb() -> float:
+    """Current resident memory of this process in MB (Linux; 0 elsewhere)."""
+    try:
+        with open("/proc/self/statm") as f:
+            return int(f.read().split()[1]) * 4096 / 1024 / 1024
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+@app.middleware("http")
+async def log_memory(request, call_next):
+    """Render's free tier kills the app above 512 MB. Log memory after every
+    POST and after any request that leaves the process above 250 MB, so the
+    Render logs show exactly which action makes it grow."""
+    before = _rss_mb()
+    response = await call_next(request)
+    after = _rss_mb()
+    if request.method != "GET" or after > 250:
+        print(f"[mem] {request.method} {request.url.path} -> {response.status_code} "
+              f"rss {before:.0f} -> {after:.0f} MB", flush=True)
+    return response
 security = HTTPBasic()
 
 # Icons only -- genuinely public/static, no auth needed, and the service
@@ -71,6 +101,35 @@ def require_auth(credentials: HTTPBasicCredentials = Depends(security)) -> None:
     correct = secrets.compare_digest(credentials.password, config.WEBAPP_PASSWORD)
     if not correct:
         raise HTTPException(status_code=401, detail="Incorrect password", headers={"WWW-Authenticate": "Basic"})
+
+
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+MAX_JD_CHARS = 20000
+
+
+def _drive_guard(fn, *args, **kwargs):
+    """Run a Drive-backed call and turn Google's errors into a message you can act on
+    (an unhandled error would otherwise reach the browser as a blank 500)."""
+    from googleapiclient.errors import HttpError
+    try:
+        return fn(*args, **kwargs)
+    except HttpError as exc:
+        text = str(exc)
+        print(f"[drive] HttpError: {text}", flush=True)
+        low = text.lower()
+        if "insufficient" in low and ("scope" in low or "permission" in low):
+            detail = ("The Google login on this server has no Drive permission. Re-run the Google login "
+                      "locally (delete token.json, run python3 run_once.py), then paste the new token.json "
+                      "into GMAIL_TOKEN_JSON on Render and in GitHub secrets.")
+        elif "accessnotconfigured" in low or "has not been used" in low or "is disabled" in low:
+            detail = ("The Google Drive API is switched off for your Google Cloud project. Enable it at "
+                      "console.cloud.google.com > APIs & Services > Library > Google Drive API, wait a minute, retry.")
+        else:
+            detail = f"Google Drive refused the request: {getattr(exc, 'reason', None) or text[:300]}"
+        raise HTTPException(status_code=400, detail=detail) from exc
+    except Exception as exc:  # noqa: BLE001
+        print(f"[drive] unexpected error: {exc!r}", flush=True)
+        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}") from exc
 
 
 def _extract_text_from_upload(filename: str, content: bytes) -> str:
@@ -155,14 +214,31 @@ def reply_send(req: ReplySendRequest):
 
 @app.get("/api/cv", dependencies=[Depends(require_auth)])
 def get_cv():
-    return {"has_cv": cv_store.has_core_cv(), "text": cv_store.get_core_cv()}
+    def build():
+        has_cv = cv_store.has_core_cv()
+        return {
+            "has_cv": has_cv,
+            "text": cv_store.get_core_cv(),
+            # Only the latest upload is kept (a new one replaces the old in place).
+            "filename": (tracker.get_state_value("core_cv_filename") or "") if has_cv else "",
+            "uploaded_at": (tracker.get_state_value("core_cv_uploaded_at") or "") if has_cv else "",
+        }
+    return _drive_guard(build)
 
 
 @app.post("/api/cv", dependencies=[Depends(require_auth)])
 def upload_cv(file: UploadFile = File(None), text: str = Form(None)):
+    source_name = "Pasted text"
+    content = b""
     if file is not None:
-        content = file.file.read()
-        extracted = _extract_text_from_upload(file.filename or "", content)
+        source_name = (file.filename or "uploaded file")[:120]
+        content = file.file.read(MAX_UPLOAD_BYTES + 1)
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=400, detail="That file is over 5 MB. Upload a smaller CV or paste the text.")
+        try:
+            extracted = _extract_text_from_upload(file.filename or "", content)
+        except Exception as exc:  # noqa: BLE001 - corrupt/encrypted/scanned files
+            raise HTTPException(status_code=400, detail=f"Could not read that file ({type(exc).__name__}). Try pasting the CV text instead.") from exc
     elif text:
         extracted = text
     else:
@@ -171,8 +247,47 @@ def upload_cv(file: UploadFile = File(None), text: str = Form(None)):
     if not extracted.strip():
         raise HTTPException(status_code=400, detail="Could not extract any text from that upload.")
 
-    cv_store.save_core_cv(extracted)
-    return {"ok": True, "text": extracted}
+    links: list[str] = []
+    if file is not None and (file.filename or "").lower().endswith(".pdf"):
+        try:
+            links = cv_struct.extract_links(content)
+        except Exception as exc:  # noqa: BLE001 - links are a bonus, never block the upload
+            print(f"[cv] link extraction failed: {exc!r}", flush=True)
+
+    _drive_guard(cv_store.save_core_cv, extracted)
+    struct_error = ""
+    try:
+        _store_struct(extracted, links)
+    except Exception as exc:  # noqa: BLE001 - upload is saved; structure is retried at generate time
+        struct_error = str(exc)[:300]
+        print(f"[cv] structure parse failed: {exc!r}", flush=True)
+    from datetime import datetime, timezone
+    uploaded_at = datetime.now(timezone.utc).isoformat()
+    tracker.set_state_value("core_cv_filename", source_name)
+    tracker.set_state_value("core_cv_uploaded_at", uploaded_at)
+    return {"ok": True, "text": extracted, "filename": source_name, "uploaded_at": uploaded_at,
+            "structure_ok": not struct_error, "structure_error": struct_error}
+
+
+def _store_struct(text: str, links: list[str]) -> dict:
+    """Parses the core CV into the structured model and stores it next to the text."""
+    import json
+    struct = ai_generate.parse_cv_struct(text, links)
+    tracker.set_state_value("core_cv_struct", json.dumps(struct, ensure_ascii=False))
+    tracker.set_state_value("core_cv_struct_hash", cv_struct.text_hash(text))
+    return struct
+
+
+def _get_struct(text: str) -> dict:
+    """Stored structure if it matches the current core CV text, else parse now (no links)."""
+    import json
+    raw = tracker.get_state_value("core_cv_struct")
+    if raw and tracker.get_state_value("core_cv_struct_hash") == cv_struct.text_hash(text):
+        try:
+            return json.loads(raw)
+        except ValueError:
+            pass
+    return _store_struct(text, [])
 
 
 # --- Generation ---
@@ -186,7 +301,9 @@ class GenerateRequest(BaseModel):
 
 @app.post("/api/generate", dependencies=[Depends(require_auth)])
 def generate(req: GenerateRequest):
-    core_cv = cv_store.get_core_cv()
+    if len(req.job_description) > MAX_JD_CHARS:
+        raise HTTPException(status_code=400, detail=f"The job description is longer than {MAX_JD_CHARS} characters. Trim it.")
+    core_cv = _drive_guard(cv_store.get_core_cv)
     if not core_cv:
         raise HTTPException(status_code=400, detail="Upload a core CV first (see the CV Manager tab).")
 
@@ -203,15 +320,44 @@ def generate(req: GenerateRequest):
             "generated": None,
         }
 
-    cv_text = ai_generate.tailor_cv(core_cv, req.job_description)
-    cover_letter_text = ai_generate.generate_cover_letter(core_cv, req.job_description)
+    # The CV and the cover letter are independent Gemini calls: run them side by side.
+    from concurrent.futures import ThreadPoolExecutor
+    try:
+        core_struct = _get_struct(core_cv)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            cv_future = pool.submit(ai_generate.tailor_cv_struct, core_struct, req.job_description)
+            cl_future = pool.submit(ai_generate.generate_cover_letter, core_cv, req.job_description, req.company, req.position)
+            final_cv, stats = cv_future.result()
+            cover_letter_text = cl_future.result()
+    except (RuntimeError, ValueError) as exc:
+        print(f"[generate] AI step failed: {exc}", flush=True)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        print(f"[generate] unexpected AI error: {exc!r}", flush=True)
+        raise HTTPException(status_code=500, detail=f"AI step failed: {type(exc).__name__}: {exc}") from exc
+    if not cover_letter_text.strip():
+        raise HTTPException(status_code=400, detail="Gemini returned an empty answer. Try again in a minute.")
+    print(f"[generate] cv edits applied={stats['changed']} kept_original={stats['kept_original']}", flush=True)
 
+    cv_text = cv_struct.to_text(final_cv)
     safe_company = "".join(c for c in req.company if c.isalnum() or c in " -_") or "Company"
-    cv_pdf = pdf_export.cv_to_pdf(config.CANDIDATE_NAME, cv_text)
-    cover_letter_pdf = pdf_export.cover_letter_to_pdf(config.CANDIDATE_NAME, req.company, cover_letter_text)
+    cv_pdf, cv_pages = pdf_export.cv_struct_to_pdf(final_cv)
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    now = datetime.now(ZoneInfo("Asia/Kolkata"))
+    date_str = f"{now.day} {now.strftime('%B %Y')}"
+    # Header contact line for the letter: the CV's own contact items, minus the portfolio-type links.
+    letter_contact = [c for c in core_struct["contact"]
+                      if not any(w in (c.get("url", "") + c["text"]).lower() for w in ("github", "portfolio"))]
+    cover_letter_pdf, _, letter_paras = pdf_export.letter_to_pdf(
+        core_struct["name"], letter_contact, cover_letter_text, date_str)
+    if not letter_paras:
+        raise HTTPException(status_code=400, detail="Gemini returned an empty cover letter. Try again in a minute.")
+    cover_letter_text = "\n\n".join(letter_paras)
 
-    cv_file_id, cv_link = cv_store.save_generated_file(f"CV - {safe_company} - {req.position}.pdf", cv_pdf)
-    cl_file_id, cl_link = cv_store.save_generated_file(
+    cv_file_id, cv_link = _drive_guard(cv_store.save_generated_file, f"CV - {safe_company} - {req.position}.pdf", cv_pdf)
+    cl_file_id, cl_link = _drive_guard(
+        cv_store.save_generated_file,
         f"Cover Letter - {safe_company} - {req.position}.pdf", cover_letter_pdf
     )
     cv_versions.add_version(
@@ -225,6 +371,7 @@ def generate(req: GenerateRequest):
             "cv_text": cv_text, "cover_letter_text": cover_letter_text,
             "cv_file_id": cv_file_id, "cover_letter_file_id": cl_file_id,
             "cv_link": cv_link, "cover_letter_link": cl_link,
+            "cv_pages": cv_pages, "cv_changes": stats["changed"],
         },
     }
 
@@ -257,11 +404,12 @@ class PromptUpdate(BaseModel):
 
 @app.post("/api/prompts", dependencies=[Depends(require_auth)])
 def update_prompt(req: PromptUpdate):
-    missing = [p for p in ("{core_cv}", "{job_description}") if p not in req.template]
+    cv_ph = "{core_cv_json}" if req.name == "cv_tailor_json" else "{core_cv}"
+    missing = [p for p in (cv_ph, "{job_description}") if p not in req.template]
     if missing:
         raise HTTPException(
             status_code=400,
-            detail=f"Template must contain both {{core_cv}} and {{job_description}}. Missing: {', '.join(missing)}",
+            detail=f"Template must contain both {cv_ph} and {{job_description}}. Missing: {', '.join(missing)}",
         )
     prompts.set_prompt(req.name, req.template)
     return {"ok": True}

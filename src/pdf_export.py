@@ -59,3 +59,16 @@ def cv_to_pdf(name: str, cv_text: str) -> bytes:
 
 def cover_letter_to_pdf(name: str, company: str, cover_letter_text: str) -> bytes:
     return _build_pdf(f"{name} - Cover Letter ({company})", cover_letter_text)
+
+
+def cv_struct_to_pdf(cv: dict) -> tuple[bytes, int]:
+    """Structured CV -> PDF in the core CV's design. Returns (bytes, pages)."""
+    from .cv_render import render_cv
+    return render_cv(cv)
+
+
+def letter_to_pdf(name: str, contact: list[dict], body_text: str, date_str: str) -> tuple[bytes, int, list[str]]:
+    from .cv_render import clean_letter_body, render_cover_letter
+    paragraphs = clean_letter_body(body_text, name)
+    pdf, pages = render_cover_letter(name, contact, paragraphs, date_str)
+    return pdf, pages, paragraphs
