@@ -52,15 +52,19 @@
   .hero h1 { font-size:34px; margin:0 0 12px; line-height:1.15; }
   .hero .lead { color:var(--muted); max-width:480px; margin:0 0 22px; font-size:16px; line-height:1.5; }
   button.big { padding:12px 26px; font-size:16px; }
-  .carousel { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:22px 22px 14px; overflow:hidden; }
+  .cars { display:flex; flex-direction:column; gap:14px; min-width:0; }
+  .carousel { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px 18px 10px; min-width:0; }
+  .viewport { overflow:hidden; }
   .track { display:flex; transition:transform .45s ease; }
-  .slide { flex:0 0 100%; min-height:210px; padding:0 4px; border-top:3px solid var(--gold); padding-top:16px; }
-  .slide h3 { margin:12px 0 8px; font-size:20px; }
-  .slide p { margin:0; color:var(--muted); font-size:15px; line-height:1.55; }
+  .slide { flex:0 0 100%; min-width:0; box-sizing:border-box; padding:2px 2px 0; }
+  .slide .top { display:flex; align-items:center; justify-content:space-between; min-height:26px; }
+  .slide h3 { margin:6px 0 6px; font-size:18px; }
+  .slide p { margin:0; color:var(--muted); font-size:14px; line-height:1.5; min-height:63px; }
   .slide .tag { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--accent); font-weight:700; }
   .slide .tag.why { color:var(--gold); }
-  .slide .n { float:right; width:26px; height:26px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; background:var(--accent); color:#fff; font-weight:600; font-size:13px; }
-  .cnav { display:flex; align-items:center; justify-content:space-between; margin-top:10px; }
+  .slide .n { width:24px; height:24px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; background:var(--accent); color:#fff; font-weight:600; font-size:12px; }
+  .carousel[data-car="0"] { border-top:3px solid var(--accent); } .carousel[data-car="1"] { border-top:3px solid var(--gold); }
+  .cnav { display:flex; align-items:center; justify-content:space-between; margin-top:6px; }
   .dots { display:flex; gap:8px; }
   .dots i { width:8px; height:8px; border-radius:50%; background:var(--border); cursor:pointer; }
   .dots i.on { background:var(--accent); width:22px; border-radius:6px; }
@@ -124,17 +128,24 @@
         <button id="signIn" class="big">Sign in with Google</button>
         <p id="authErr" class="err"></p>
       </section>
-      <section class="carousel" id="carousel" aria-label="About NextStep">
-        <div class="track" id="cTrack">
-          <article class="slide"><span class="tag">How it works</span><span class="n">1</span><h3>Connect Gmail</h3><p>Sign in, then allow read-only access to your inbox.</p></article>
-          <article class="slide"><span class="tag">How it works</span><span class="n">2</span><h3>We scan and sort</h3><p>Applications, interviews, offers and rejections are picked out and tracked for you.</p></article>
-          <article class="slide"><span class="tag">How it works</span><span class="n">3</span><h3>Tailor and reply</h3><p>Generate a CV and cover letter per job, and draft replies that you review before anything is sent.</p></article>
-          <article class="slide"><span class="tag why">Why Google sign-in only?</span><h3>Your applications live in Gmail</h3><p>Confirmations, interview invites and rejections arrive in your inbox, so the account you sign in with is the one we read. There is nothing to import by hand.</p></article>
-          <article class="slide"><span class="tag why">Why Google sign-in only?</span><h3>Read-only by default</h3><p>We can only read emails until you choose Allow replies later, and nothing is ever sent without you reviewing and confirming it.</p></article>
-          <article class="slide"><span class="tag why">Why Google sign-in only?</span><h3>Private to you</h3><p>Your data is stored under your account only, and you can delete all of it at any time.</p></article>
-        </div>
-        <div class="cnav"><button class="ghost small" id="cPrev" aria-label="Previous">&#8249;</button><div class="dots" id="cDots"></div><button class="ghost small" id="cNext" aria-label="Next">&#8250;</button></div>
+      <div class="cars">
+      <section class="carousel" data-car="0" aria-label="How it works">
+        <div class="viewport"><div class="track">
+          <article class="slide"><div class="top"><span class="tag">How it works</span><span class="n">1</span></div><h3>Connect Gmail</h3><p>Sign in, then allow read-only access to your inbox.</p></article>
+          <article class="slide"><div class="top"><span class="tag">How it works</span><span class="n">2</span></div><h3>We scan and sort</h3><p>Applications, interviews, offers and rejections are picked out and tracked for you.</p></article>
+          <article class="slide"><div class="top"><span class="tag">How it works</span><span class="n">3</span></div><h3>Tailor and reply</h3><p>Generate a CV and cover letter per job, and draft replies that you review before anything is sent.</p></article>
+        </div></div>
+        <div class="cnav"><button class="ghost small cprev" aria-label="Previous">&#8249;</button><div class="dots"></div><button class="ghost small cnext" aria-label="Next">&#8250;</button></div>
       </section>
+      <section class="carousel" data-car="1" aria-label="Why Google sign-in only?">
+        <div class="viewport"><div class="track">
+          <article class="slide"><div class="top"><span class="tag why">Why Google sign-in only?</span></div><h3>Your applications live in Gmail</h3><p>Confirmations, interview invites and rejections arrive in your inbox, so the account you sign in with is the one we read. There is nothing to import by hand.</p></article>
+          <article class="slide"><div class="top"><span class="tag why">Why Google sign-in only?</span></div><h3>Read-only by default</h3><p>We can only read emails until you choose Allow replies later, and nothing is ever sent without you reviewing and confirming it.</p></article>
+          <article class="slide"><div class="top"><span class="tag why">Why Google sign-in only?</span></div><h3>Private to you</h3><p>Your data is stored under your account only, and you can delete all of it at any time.</p></article>
+        </div></div>
+        <div class="cnav"><button class="ghost small cprev" aria-label="Previous">&#8249;</button><div class="dots"></div><button class="ghost small cnext" aria-label="Next">&#8250;</button></div>
+      </section>
+      </div>
     </div>
   </div>
 
@@ -889,16 +900,16 @@ onAuthStateChanged(auth, async (user) => {
   catch (e) { $("vaultMsg").textContent = "Could not read your data: " + e.message; }
 });
 
-// onboarding carousel
-(() => {
-  const track = $("cTrack"), dots = $("cDots"), n = track.children.length; let i = 0, timer = null;
+// onboarding carousels (two separate ones: how it works / why Google sign-in)
+document.querySelectorAll(".carousel").forEach((root, idx) => {
+  const track = root.querySelector(".track"), dots = root.querySelector(".dots"), n = track.children.length; let i = 0, timer = null;
   for (let k = 0; k < n; k++) { const d = document.createElement("i"); d.onclick = () => { go(k); restart(); }; dots.appendChild(d); }
   function go(k) { i = (k + n) % n; track.style.transform = `translateX(-${i * 100}%)`; [...dots.children].forEach((d, j) => d.classList.toggle("on", j === i)); }
-  function restart() { clearInterval(timer); timer = setInterval(() => { if (!$("signedOut").classList.contains("hidden")) go(i + 1); }, 5000); }
-  $("cPrev").onclick = () => { go(i - 1); restart(); }; $("cNext").onclick = () => { go(i + 1); restart(); };
-  $("carousel").addEventListener("mouseenter", () => clearInterval(timer)); $("carousel").addEventListener("mouseleave", restart);
+  function restart() { clearInterval(timer); timer = setInterval(() => { if (!$("signedOut").classList.contains("hidden")) go(i + 1); }, 5000 + idx * 1500); }
+  root.querySelector(".cprev").onclick = () => { go(i - 1); restart(); }; root.querySelector(".cnext").onclick = () => { go(i + 1); restart(); };
+  root.addEventListener("mouseenter", () => clearInterval(timer)); root.addEventListener("mouseleave", restart);
   go(0); restart();
-})();
+});
 </script>
 </body>
 </html>
