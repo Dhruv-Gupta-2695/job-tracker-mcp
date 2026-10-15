@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Job Tracker</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/static/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+<meta name="theme-color" content="#1f3a5f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Job Tracker">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root { --navy:#1f3a5f; --grey:#555; --line:#e3e6ea; }
@@ -44,7 +50,7 @@
 <body>
 <header>
   <h1>Job Tracker</h1>
-  <div id="who" class="row hidden"><span id="whoName" class="muted"></span><button class="ghost" id="signOut">Sign out</button></div>
+  <div id="who" class="row hidden"><button id="installBtn" class="ghost hidden">Install app</button><span id="whoName" class="muted"></span><button class="ghost" id="signOut">Sign out</button></div>
 </header>
 <main>
   <div id="signedOut" class="card center hidden">
@@ -104,6 +110,11 @@
           <div class="row"><button id="keyTest" class="ghost">Test key</button><button id="vaultLock" class="ghost">Lock</button></div>
         </div>
         <p id="vaultMsg" class="muted"></p>
+      </div>
+      <div class="card">
+        <strong>Notifications</strong>
+        <p class="muted">Get a notification on this device when a scan finds new applications or a rejection, interview or offer. They appear after a scan (the app also scans when you open it); there are no alerts while the app is closed. On iPhone, add the app to your Home Screen first.</p>
+        <div class="row"><button id="notifBtn" class="ghost">Turn on notifications</button><span id="notifState" class="muted"></span></div>
       </div>
       <div class="card">
         <strong>Delete my data</strong>
@@ -389,7 +400,7 @@ async function loadHistory() {
 // ---------- applications: Gmail scan + dashboard ----------
 const GOOGLE_CLIENT_ID = "1043405535011-qnjs0cmuso9fofd31u7709l1hgioetkf.apps.googleusercontent.com";
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
-let gmailToken = null, gmailTokenExp = 0, tokenClient = null, apps = [], metaScan = { lastScanAt: "", seenIds: [] }, shown = 50;
+let scanning = false, gmailToken = null, gmailTokenExp = 0, tokenClient = null, apps = [], metaScan = { lastScanAt: "", seenIds: [] }, shown = 50;
 const appsCol = () => collection(db, "users", auth.currentUser.uid, "apps");
 const metaRef = () => doc(db, "users", auth.currentUser.uid, "meta", "scan");
 
@@ -418,9 +429,12 @@ async function loadApps() {
   renderApps();
 }
 
-$("scanBtn").onclick = async () => {
+async function runScan(auto) {
+  if (scanning) return;
+  scanning = true;
   $("scanBtn").disabled = true; $("scanMsg").textContent = "Connecting to Gmail...";
   let added = 0, updated = 0, done = 0, total = 0;
+  const newApps = [], updatedApps = [];
   const seenAll = new Set(metaScan.seenIds);
   try {
     let token = await getGmailToken();
@@ -445,7 +459,10 @@ $("scanBtn").onclick = async () => {
       }
       if (r.upserts.length) {
         const batch = writeBatch(db);
-        r.upserts.forEach((a) => { working.set(a.threadId, a); batch.set(doc(appsCol(), a.threadId), a, { merge: true }); });
+        r.upserts.forEach((a) => {
+          (working.has(a.threadId) ? updatedApps : newApps).push(a);
+          working.set(a.threadId, a); batch.set(doc(appsCol(), a.threadId), a, { merge: true });
+        });
         await batch.commit();
       }
       added += r.new; updated += r.updated; done += chunk.length;
@@ -456,11 +473,20 @@ $("scanBtn").onclick = async () => {
     await setDoc(metaRef(), { lastScanAt: list.started_at, seenIds: [...seenAll].slice(-3000) });
     await loadApps();
     $("scanMsg").textContent = `Scanned ${total} email(s): ${added} new application(s), ${updated} updated.`;
+    await notifyScan(newApps, updatedApps);
   } catch (e) {
     if (/Connect Gmail again/.test(e.message)) gmailToken = null;
-    $("scanMsg").textContent = (done ? `Stopped after ${done} of ${total} emails (what was found is saved; scan again to continue). ` : "") + e.message;
-  } finally { $("scanBtn").disabled = false; }
-};
+    // An automatic scan that cannot open Google's permission window just waits for a tap.
+    $("scanMsg").textContent = auto && !done ? "Tap Scan for new mail to check your inbox." : (done ? `Stopped after ${done} of ${total} emails (what was found is saved; scan again to continue). ` : "") + e.message;
+  } finally { scanning = false; $("scanBtn").disabled = false; }
+}
+$("scanBtn").onclick = () => runScan(false);
+// Scan automatically when the app is opened or comes back to the front, if the last scan is over 30 minutes old.
+function autoScanIfStale() {
+  if (!auth.currentUser || document.hidden || scanning || !metaScan.lastScanAt) return;
+  if (Date.now() - new Date(metaScan.lastScanAt).getTime() > 30 * 60000) runScan(true);
+}
+document.addEventListener("visibilitychange", autoScanIfStale);
 
 function renderApps() {
   const q = norm($("fSearch").value), st = $("fStatus").value, days = +$("fRange").value;
@@ -496,6 +522,36 @@ function renderApps() {
 }
 ["fSearch", "fStatus", "fRange"].forEach((id) => $(id).addEventListener("input", () => { shown = 50; renderApps(); }));
 $("appMore").onclick = () => { shown += 50; renderApps(); };
+
+
+// ---------- PWA: install, notifications ----------
+let swReg = null, installEvent = null;
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").then((r) => { swReg = r; }).catch(() => {});
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvent = e; $("installBtn").classList.remove("hidden"); });
+window.addEventListener("appinstalled", () => $("installBtn").classList.add("hidden"));
+$("installBtn").onclick = async () => { if (!installEvent) return; installEvent.prompt(); await installEvent.userChoice; installEvent = null; $("installBtn").classList.add("hidden"); };
+
+function notifState() {
+  if (!("Notification" in window)) { $("notifState").textContent = "This browser does not support notifications."; $("notifBtn").classList.add("hidden"); return; }
+  const p = Notification.permission;
+  $("notifState").textContent = p === "granted" ? "On for this device." : p === "denied" ? "Blocked in your browser settings." : "Off.";
+  $("notifBtn").classList.toggle("hidden", p !== "default");
+}
+$("notifBtn").onclick = async () => { await Notification.requestPermission(); notifState(); };
+async function notifyScan(newApps, updatedApps) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const parts = [];
+  if (newApps.length) parts.push(`${newApps.length} new application${newApps.length > 1 ? "s" : ""}`);
+  for (const s of ["offer", "interview", "rejected"]) {
+    const n = updatedApps.filter((a) => a.status === s).length;
+    if (n) parts.push(`${n} ${s === "rejected" ? "rejection" : s}${n > 1 && s !== "rejected" ? "s" : n > 1 ? "s" : ""}`);
+  }
+  if (!parts.length) return;
+  const reg = swReg || (await navigator.serviceWorker?.ready);
+  const opts = { body: parts.join(", "), icon: "/static/icons/icon-192.png", badge: "/static/icons/icon-192.png", tag: "scan" };
+  if (reg?.showNotification) reg.showNotification("Job Tracker", opts); else new Notification("Job Tracker", opts);
+}
+notifState();
 
 // ---------- delete all my data ----------
 $("delAll").onclick = async () => {
@@ -543,7 +599,7 @@ onAuthStateChanged(auth, async (user) => {
   $("uidBadge").textContent = "id " + user.uid.slice(0, 6) + "...";
   try { const me = await api("/api/me"); $("meInfo").textContent = `Server verified ${me.email}.`; }
   catch (e) { $("meInfo").textContent = "Server check failed: " + e.message; }
-  try { await refreshVault(); await loadCv(); await loadHistory(); await loadApps(); }
+  try { await refreshVault(); await loadCv(); await loadHistory(); await loadApps(); autoScanIfStale(); }
   catch (e) { $("vaultMsg").textContent = "Could not read your data: " + e.message; }
 });
 </script>
