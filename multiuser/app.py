@@ -89,7 +89,7 @@ def me(user: dict = Depends(current_user)):
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_JD_CHARS = 20000
 MAX_CV_CHARS = 30000
-_RATE = {"generate": (6, 3600), "cv": (10, 3600), "check": (10, 600), "scan": (12, 3600), "letter": (10, 3600)}  # (calls, seconds) per user
+_RATE = {"generate": (6, 3600), "cv": (10, 3600), "check": (10, 600), "scan": (12, 3600), "letter": (10, 3600), "reply": (20, 3600), "draft": (30, 3600)}  # (calls, seconds) per user
 _hits: dict[tuple[str, str], list[float]] = {}
 
 
@@ -342,6 +342,218 @@ def scan_process(req: ScanProcessRequest, user: dict = Depends(current_user), x_
     out = scan_core.process_messages(messages, req.existing, set(), req.user_email or user.get("email", ""))
     out["seen"] = list(dict.fromkeys(list(out["seen"]) + list(req.ids)))  # ids that no longer exist are done too
     return out
+
+
+# ------------------------------------------------------------- replies ----
+# Sending is off unless the server owner turns it on: ENABLE_EMAIL_SEND=true and a REPLY_SECRET
+# (a long random string used to sign confirmations). Drafting with AI and saving to Gmail Drafts
+# always work. The caps below protect users from mistakes and loops.
+ENABLE_EMAIL_SEND = os.environ.get("ENABLE_EMAIL_SEND", "").strip().lower() == "true"
+REPLY_SECRET = os.environ.get("REPLY_SECRET", "").strip()
+MAX_SENDS_PER_DAY = int(os.environ.get("MAX_SENDS_PER_DAY", "5") or 5)
+_recent_sends: dict[str, list[dict]] = {}  # best-effort memory per user (also checked: the log the page sends)
+
+
+def can_send() -> bool:
+    return ENABLE_EMAIL_SEND and len(REPLY_SECRET) >= 16
+
+
+@app.get("/api/config")
+def api_config(user: dict = Depends(current_user)):
+    return {"can_send": can_send(), "max_sends_per_day": MAX_SENDS_PER_DAY}
+
+
+def _reply_call(fn):
+    from src import gmail_rest, reply_logic
+    try:
+        return fn()
+    except reply_logic.ReplyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except gmail_rest.GmailScopeError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except gmail_rest.GmailTokenError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except gmail_rest.GmailBusyError as exc:
+        raise HTTPException(status_code=429, detail="Gmail is busy. Try again in a minute.") from exc
+    except HTTPException:
+        raise
+    except RuntimeError as exc:  # AI errors
+        raise _ai_error(exc) from exc
+    except Exception as exc:  # noqa: BLE001
+        print(f"[reply] unexpected error: {type(exc).__name__}", flush=True)
+        raise HTTPException(status_code=502, detail="Could not complete that with Gmail. Try again.") from exc
+
+
+def _load_thread(token: str, thread_id: str):
+    from src import gmail_rest, reply_logic
+    if not re.fullmatch(r"[A-Za-z0-9]{6,40}", thread_id or ""):
+        raise reply_logic.ReplyError("That email thread id is not valid.")
+    me = gmail_rest.get_profile_email(token)
+    messages = gmail_rest.get_thread(token, thread_id)
+    if not messages:
+        raise reply_logic.ReplyError("That email thread could not be found in Gmail.")
+    return me, messages
+
+
+class ReplyContextReq(BaseModel):
+    thread_id: str
+
+
+class ReplyWriteReq(BaseModel):
+    thread_id: str
+    instructions: str = ""
+    company: str = ""
+    position: str = ""
+    status: str = ""
+    core_text: str = ""
+    name: str = ""
+
+
+class ReplyBodyReq(BaseModel):
+    thread_id: str
+    body: str
+    status: str = ""
+
+
+class ReplySendReq(BaseModel):
+    thread_id: str
+    body: str
+    confirm_token: str = ""
+    company: str = ""
+    status: str = ""
+    sent_log: list[dict] = []
+
+
+@app.post("/api/reply/context")
+def reply_context(req: ReplyContextReq, user: dict = Depends(current_user), x_gmail_token: str | None = Header(default=None)):
+    """The last message in the chain: subject, whether you sent or received it, and when."""
+    token = _gmail_token(x_gmail_token)
+
+    def go():
+        me, messages = _load_thread(token, req.thread_id)
+        from src.gmail_client import extract_email_address
+        last = messages[-1]
+        mine = extract_email_address(last["from"]).lower() == me
+        return {"subject": (last["subject"] or "").strip() or "(no subject)",
+                "direction": "sent" if mine else "received",
+                "date": datetime.fromtimestamp(last["ts"], ZoneInfo("UTC")).isoformat(), "messages": len(messages)}
+    return _reply_call(go)
+
+
+@app.post("/api/reply/write")
+def reply_write(req: ReplyWriteReq, user: dict = Depends(current_user), key: str = Depends(gemini_key),
+                x_gmail_token: str | None = Header(default=None)):
+    from src import ai_generate, reply_logic
+    token = _gmail_token(x_gmail_token)
+    rate_limit(user["uid"], "reply")
+
+    def go():
+        reply_logic.check_not_rejected(req.status)
+        me, messages = _load_thread(token, req.thread_id)
+        to, last = reply_logic.choose_recipient(messages, me)
+        prompt = reply_logic.build_prompt((req.name or user.get("name") or "the applicant")[:80], req.company, req.position,
+                                          messages, me, req.core_text[:MAX_CV_CHARS], req.instructions)
+        body = _run_with_key(key, ai_generate.generate_text, prompt)
+        return {"to": to, "subject": reply_logic.reply_subject(last["subject"]), "body": body, "can_send": can_send()}
+    return _reply_call(go)
+
+
+@app.post("/api/reply/draft")
+def reply_draft(req: ReplyBodyReq, user: dict = Depends(current_user), x_gmail_token: str | None = Header(default=None)):
+    """Puts the reply in Gmail Drafts (threaded). Never sends anything."""
+    from src import gmail_rest, reply_logic
+    token = _gmail_token(x_gmail_token)
+    rate_limit(user["uid"], "draft")
+
+    def go():
+        body = reply_logic.lint_body(req.body)
+        reply_logic.check_not_rejected(req.status)
+        me, messages = _load_thread(token, req.thread_id)
+        to, last = reply_logic.choose_recipient(messages, me)
+        subject = reply_logic.reply_subject(last["subject"])
+        draft_id = gmail_rest.create_draft(token, reply_logic.build_raw(to, subject, body, last), req.thread_id)
+        return {"ok": True, "draft_id": draft_id, "to": to}
+    return _reply_call(go)
+
+
+def _sent_today(uid: str, client_log: list[dict]) -> tuple[int, set[str]]:
+    today = datetime.now(ZoneInfo("UTC")).strftime("%Y-%m-%d")
+    entries = [e for e in client_log[-200:] if isinstance(e, dict)] + _recent_sends.get(uid, [])
+    keys = {e.get("key") for e in entries if e.get("status", "sent") in ("sent", "sending")}
+    n = len({e.get("key") for e in entries if e.get("day") == today and e.get("status", "sent") in ("sent", "sending")})
+    return n, keys
+
+
+def _require_send_enabled():
+    from src import reply_logic
+    if not can_send():
+        raise reply_logic.ReplyError("Sending is turned off on this site. Save the reply to Gmail Drafts instead.")
+
+
+@app.post("/api/reply/prepare")
+def reply_prepare(req: ReplySendReq, user: dict = Depends(current_user), x_gmail_token: str | None = Header(default=None)):
+    """Step 1 of sending: validate everything and return a preview plus a confirmation token."""
+    from src import reply_logic
+    token = _gmail_token(x_gmail_token)
+
+    def go():
+        _require_send_enabled()
+        body = reply_logic.lint_body(req.body)
+        reply_logic.check_not_rejected(req.status)
+        me, messages = _load_thread(token, req.thread_id)
+        to, last = reply_logic.choose_recipient(messages, me)
+        subject = reply_logic.reply_subject(last["subject"])
+        used, _ = _sent_today(user["uid"], req.sent_log)
+        if used >= MAX_SENDS_PER_DAY:
+            raise reply_logic.ReplyError(f"Daily limit of {MAX_SENDS_PER_DAY} sent emails reached. Try tomorrow.")
+        return {"to": to, "subject": subject, "body": body, "company": req.company,
+                "sends_left_today": MAX_SENDS_PER_DAY - used,
+                "confirm_token": reply_logic.make_token(REPLY_SECRET, user["uid"], req.thread_id, to, subject, body)}
+    return _reply_call(go)
+
+
+@app.post("/api/reply/send")
+def reply_send(req: ReplySendReq, user: dict = Depends(current_user), x_gmail_token: str | None = Header(default=None)):
+    """Step 2: sends only with a valid, unexpired confirmation for this exact recipient, subject and text."""
+    import time
+    from src import gmail_rest, reply_logic
+    token = _gmail_token(x_gmail_token)
+
+    def go():
+        _require_send_enabled()
+        body = reply_logic.lint_body(req.body)
+        reply_logic.check_not_rejected(req.status)
+        me, messages = _load_thread(token, req.thread_id)
+        to, last = reply_logic.choose_recipient(messages, me)
+        subject = reply_logic.reply_subject(last["subject"])
+        reply_logic.verify_token(REPLY_SECRET, user["uid"], req.thread_id, to, subject, body, req.confirm_token)
+
+        key = reply_logic.idempotency_key(req.thread_id, to, subject, body)
+        used, keys = _sent_today(user["uid"], req.sent_log)
+        if key in keys:
+            return {"ok": True, "already_sent": True, "to": to, "entry": None}
+        if used >= MAX_SENDS_PER_DAY:
+            raise reply_logic.ReplyError(f"Daily limit of {MAX_SENDS_PER_DAY} sent emails reached. Try tomorrow.")
+        now = time.time()
+        recent = _recent_sends.setdefault(user["uid"], [])
+        recent[:] = [e for e in recent if now - e["ts"] < 86400]
+        for e in list(recent) + [x for x in req.sent_log[-200:] if isinstance(x, dict)]:
+            if e.get("thread_id") == req.thread_id and e.get("status", "sent") in ("sent", "sending") \
+                    and now - float(e.get("ts", 0)) < reply_logic.THREAD_COOLDOWN_SECONDS:
+                raise reply_logic.ReplyError("You just sent a reply in this thread. Wait a few minutes before another.")
+
+        # Remember the attempt BEFORE calling Gmail so a retry can never double-send.
+        entry = {"key": key, "thread_id": req.thread_id, "to": to, "subject": subject, "ts": now,
+                 "day": datetime.now(ZoneInfo("UTC")).strftime("%Y-%m-%d"), "status": "sending"}
+        recent.append(entry)
+        try:
+            message_id = gmail_rest.send_message(token, reply_logic.build_raw(to, subject, body, last), req.thread_id)
+        except Exception:
+            recent.remove(entry)
+            raise
+        entry["status"] = "sent"
+        return {"ok": True, "to": to, "entry": {**entry, "message_id": message_id}}
+    return _reply_call(go)
 
 
 @app.get("/manifest.json", include_in_schema=False)

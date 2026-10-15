@@ -20,6 +20,10 @@ class GmailBusyError(RuntimeError):
     """Gmail is rate-limiting this connection; waiting a little and retrying works."""
 
 
+class GmailScopeError(RuntimeError):
+    """The access token does not include the permission this action needs (replies need gmail.compose)."""
+
+
 class GmailTokenError(RuntimeError):
     """The access token was rejected (expired, revoked or missing the Gmail permission)."""
 
@@ -31,6 +35,8 @@ def _is_rate_limited(resp: requests.Response) -> bool:
 def _check(resp: requests.Response) -> None:
     if _is_rate_limited(resp):
         raise GmailBusyError("Gmail is asking us to slow down.")
+    if resp.status_code == 403 and "insufficient" in resp.text.lower():
+        raise GmailScopeError("Reply permission is not allowed yet. Click Allow replies first.")
     if resp.status_code in (401, 403):
         raise GmailTokenError("Google rejected the Gmail connection. Connect Gmail again.")
     resp.raise_for_status()
@@ -108,3 +114,49 @@ def fetch_messages_since(access_token: str, after: datetime, skip_ids: set[str] 
         with ThreadPoolExecutor(max_workers=4) as pool:
             fetched = list(pool.map(lambda i: _fetch_one(session, headers, i), ids))
     return [m for m in fetched if m is not None]
+
+
+# ---------------------------------------------------------------- replies
+
+def _auth(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def get_profile_email(token: str) -> str:
+    resp = requests.get(f"{BASE}/profile", headers=_auth(token), timeout=20)
+    _check(resp)
+    return (resp.json().get("emailAddress") or "").lower()
+
+
+def get_thread(token: str, thread_id: str) -> list[dict]:
+    """Every message of a thread, oldest first, with the headers needed to reply."""
+    resp = requests.get(f"{BASE}/threads/{thread_id}", params={"format": "full"}, headers=_auth(token), timeout=30)
+    if resp.status_code == 404:
+        return []
+    _check(resp)
+    out = []
+    for m in resp.json().get("messages", []):
+        hdrs = m["payload"].get("headers", [])
+        out.append({
+            "id": m["id"], "from": _header(hdrs, "From"), "reply_to": _header(hdrs, "Reply-To"),
+            "subject": _header(hdrs, "Subject"),
+            "message_id": _header(hdrs, "Message-ID") or _header(hdrs, "Message-Id"),
+            "references": _header(hdrs, "References"),
+            "body": _extract_body(m["payload"]), "ts": int(m.get("internalDate", "0")) / 1000,
+        })
+    out.sort(key=lambda x: x["ts"])
+    return out
+
+
+def create_draft(token: str, raw_b64: str, thread_id: str) -> str:
+    resp = requests.post(f"{BASE}/drafts", json={"message": {"raw": raw_b64, "threadId": thread_id}},
+                         headers=_auth(token), timeout=30)
+    _check(resp)
+    return resp.json().get("id", "")
+
+
+def send_message(token: str, raw_b64: str, thread_id: str) -> str:
+    resp = requests.post(f"{BASE}/messages/send", json={"raw": raw_b64, "threadId": thread_id},
+                         headers=_auth(token), timeout=30)
+    _check(resp)
+    return resp.json().get("id", "")

@@ -2,7 +2,7 @@
 
 A personal job-application tracker that runs at zero cost. It reads your Gmail, records each application in a Google Sheet, tells you about replies on Telegram, and has a small web portal for viewing applications, tailoring CVs with AI, and writing or sending replies.
 
-Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 6 (multi-user) is built; Phase 7 (installable app and notifications) is built; Phase 8 (one home for the owner's data) is the current phase. Unscheduled ideas are listed under Future aspects.
+Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 6 (multi-user) is built; Phase 7 (installable app and notifications) is built; Phase 8 (one home for the owner's data) is built; Phase 9 (reply writer and send) is the current phase. Unscheduled ideas are listed under Future aspects.
 
 ## Delivery phases
 
@@ -124,7 +124,7 @@ Built
 
 Exit check: install the app on a phone and a laptop, turn on notifications, run a scan that finds a new application, and see the notification.
 
-### Phase 8: One home for the owner's data (current, branch `phase-8-unified-scan`)
+### Phase 8: One home for the owner's data (branch `phase-8-unified-scan`)
 Goal: the owner uses the new portal as the only portal, while the scheduled scans and Telegram alerts keep working exactly as before.
 
 Decisions (confirmed)
@@ -143,8 +143,24 @@ Cut-over steps: add the secrets `FIREBASE_SERVICE_ACCOUNT_JSON` and `FIREBASE_OW
 
 Exit check: a scheduled scan runs with `USE_FIRESTORE=true`, a Telegram summary arrives, and new applications show up in the new portal.
 
-### Phase 9: Reply writer and send in the new portal (planned)
-Goal: the AI reply writer, Gmail drafts and guarded send, rebuilt for the multi-user portal with the same safeguards (server-chosen recipient, confirmation token, daily cap, cooldown, placeholder check). Needs the Gmail compose and send permission added to the consent screen and a clear consent step for users. Also folded in here: a scan button parity check and a prompt editor if still wanted.
+### Phase 9: Reply writer and send in the new portal (current, branch `phase-9-reply-writer`)
+Goal: the AI reply writer, Gmail drafts and guarded send, rebuilt for the multi-user portal with the same safeguards as the old portal.
+
+Decisions (confirmed)
+- Scope: write with AI, save as a Gmail draft, and guarded send.
+- Opt-in per user: a separate "Allow replies" step asks Google for the extra `gmail.compose` permission only when a user wants replies. Users who never use replies keep read-only access.
+- Sending is off by default on the server: it needs `ENABLE_EMAIL_SEND=true` and a `REPLY_SECRET` (16+ random characters) in the server's environment; `MAX_SENDS_PER_DAY` (default 5).
+
+Built
+- Server (`multiuser/app.py`, `src/reply_logic.py`, `src/gmail_rest.py`): endpoints for last-message context, AI draft, save-to-drafts, prepare and send. Gmail is read and written with the user's short-lived token, and the AI call uses the user's own Gemini key; nothing is stored on the server.
+- Server-enforced safeguards: the recipient always comes from the Gmail thread (the latest message not from the user), never from typed text or AI output; placeholder check (`[Name]` and similar); never replies to rejected applications, no-reply senders or job-board relay addresses; the email text sits inside "untrusted data" markers in the AI prompt.
+- Guarded send: a signed confirmation bound to the user, thread, recipient, subject and exact body (expires in 20 minutes); an idempotency key so a retry never double-sends; a per-thread cooldown of 10 minutes; a daily cap. The sent log is kept per user in Firestore (`meta/sent`) and also checked in server memory.
+- Page: a Reply button on every application (greyed out, with the reason, for rejected, job-board and no-reply senders), the last message of the chain, a draft that is remembered in the browser until sent, and a "Check before sending" box showing the exact recipient and text. Sent text is erased from browser memory after sending.
+- Setup tab: Email replies card to allow or turn off replies.
+
+Not carried over from the old portal: the Telegram ping for every sent email (users have no Telegram), and the Sheet-based sent log.
+
+Exit check: allow replies, write a draft with AI for a real application thread, save it to Gmail drafts and see it threaded in Gmail; with sending enabled, send one reply and see it in Gmail; a second click does not send twice.
 
 ### Future aspects (not scheduled)
 Ideas that are not part of any phase yet. Each is built only if it proves needed once the phase before it ships.
@@ -495,4 +511,4 @@ Two scans a day are a hard requirement (12:00 and 19:00 IST). GitHub's own `sche
 - Gemini free tier can return 503 under load; retries and the fallback model reduce but do not remove this.
 - The Reply button is enabled or disabled from the original confirmation's sender; the server makes the final decision from the latest message.
 
-**Planned, not built:** Phase 8 (current), Phase 9 and the Future aspects list, see above.
+**Planned, not built:** Phase 9 (current) and the Future aspects list, see above.

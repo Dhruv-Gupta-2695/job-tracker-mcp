@@ -4,53 +4,91 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Job Tracker</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem("jt.theme")||"dark"}catch(e){document.documentElement.dataset.theme="dark"}</script>
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/static/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-<meta name="theme-color" content="#1f3a5f">
+<meta name="theme-color" content="#171a21">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Job Tracker">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
-  :root { --navy:#1f3a5f; --grey:#555; --line:#e3e6ea; }
+  :root { --bg:#0f1115; --panel:#171a21; --border:#2a2f3a; --text:#e6e8ee; --muted:#9aa3b2; --accent:#5b8def; --accent-dim:#33507a;
+          --green:#4caf7d; --red:#e0685f; --yellow:#d9b34c; --field:#0c0e12; --tile-active:#1a2436; --warn-bg:#2b2616; --warn-border:#6b5a22; --overlay:rgba(0,0,0,.65); color-scheme:dark; }
+  [data-theme="light"] { --bg:#f6f7f9; --panel:#ffffff; --border:#e3e6ea; --text:#111418; --muted:#5a6272; --accent:#1f3a5f; --accent-dim:#9db2cf;
+          --green:#1e8a53; --red:#c4443b; --yellow:#a77d0e; --field:#f3f5f8; --tile-active:#e8eef7; --warn-bg:#fff8e6; --warn-border:#f0d890; --overlay:rgba(0,0,0,.45); color-scheme:light; }
   * { box-sizing:border-box; }
-  body { margin:0; font-family:-apple-system,"Segoe UI",Roboto,sans-serif; color:#111; background:#f6f7f9; }
-  header { background:#fff; border-bottom:1px solid var(--line); padding:12px 20px; display:flex; align-items:center; justify-content:space-between; }
-  header h1 { font-size:18px; margin:0; color:var(--navy); }
-  main { max-width:960px; margin:24px auto; padding:0 16px; }
-  .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:16px; }
-  button { background:var(--navy); color:#fff; border:0; border-radius:8px; padding:9px 16px; font-size:14px; cursor:pointer; }
-  button.ghost { background:#fff; color:var(--navy); border:1px solid var(--navy); }
-  .muted { color:var(--grey); font-size:14px; }
-  .err { color:#b00020; font-size:14px; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  header { padding:18px 28px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  header h1 { font-size:18px; margin:0; font-weight:600; }
+  main { padding:24px 28px; max-width:1280px; margin:0 auto; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:18px 20px; margin-bottom:16px; }
+  .card h2 { font-size:14px; margin:0 0 12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+  nav { display:flex; gap:4px; border-bottom:1px solid var(--border); margin:0 0 20px; flex-wrap:wrap; }
+  nav button { background:none; border:none; border-bottom:2px solid transparent; border-radius:0; color:var(--muted); padding:12px 16px; font-size:14px; }
+  nav button.on { color:var(--text); border-bottom-color:var(--accent); background:none; }
+  button { background:var(--accent); color:#fff; border:1px solid var(--accent); border-radius:6px; padding:9px 16px; font-size:14px; font-weight:500; cursor:pointer; font-family:inherit; }
+  button:hover { filter:brightness(.92); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  button.ghost { background:transparent; color:var(--text); border:1px solid var(--border); }
+  button.ghost:hover { border-color:var(--accent); filter:none; }
+  button.small { padding:3px 10px; font-size:12px; }
+  input, textarea, select { background:var(--field); border:1px solid var(--border); border-radius:6px; color:var(--text); padding:9px 12px; font:inherit; font-size:14px; }
+  input, textarea { width:100%; margin:4px 0 10px; }
+  textarea { min-height:140px; resize:vertical; }
+  select { padding:8px 10px; font-size:13px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:10px 0 2px; }
+  a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+  .muted { color:var(--muted); font-size:13px; }
+  .err { color:var(--red); font-size:14px; } .ok { color:var(--green); font-size:14px; }
   .center { text-align:center; padding:60px 20px; }
   .row { display:flex; gap:10px; align-items:center; }
-  .badge { background:#eef2f7; border-radius:12px; padding:3px 10px; font-size:12px; color:var(--navy); }
-  .hidden { display:none; }
-  nav { display:flex; gap:6px; margin-bottom:16px; }
-  nav button { background:#fff; color:var(--navy); border:1px solid var(--line); }
-  nav button.on { background:var(--navy); color:#fff; border-color:var(--navy); }
-  input, textarea { width:100%; padding:9px 10px; border:1px solid #c9ced6; border-radius:8px; font:inherit; margin:4px 0 10px; }
-  textarea { min-height:140px; resize:vertical; }
-  label { font-size:13px; color:var(--grey); }
-  .ok { color:#0a7a3d; font-size:14px; }
-  pre { white-space:pre-wrap; background:#f3f5f8; padding:12px; border-radius:8px; font-size:13px; max-height:260px; overflow:auto; }
-  table { width:100%; border-collapse:collapse; font-size:14px; }
-  th, td { text-align:left; padding:8px 6px; border-top:1px solid var(--line); vertical-align:top; }
-  th { color:var(--grey); font-weight:600; font-size:12px; text-transform:uppercase; }
-  .tiles { display:flex; gap:10px; flex-wrap:wrap; margin:12px 0; }
-  .tile { flex:1; min-width:90px; border:1px solid var(--line); border-radius:10px; padding:10px; text-align:center; }
-  .tile b { display:block; font-size:22px; color:var(--navy); }
-  .st { border-radius:10px; padding:2px 9px; font-size:12px; background:#eef2f7; }
-  .st.interview { background:#e3f2ff; } .st.offer { background:#e2f7e8; } .st.rejected { background:#fde8e8; }
-  select { padding:7px; border:1px solid #c9ced6; border-radius:8px; font:inherit; }
-  .hist { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-top:1px solid var(--line); }
+  .badge { background:var(--field); border:1px solid var(--border); border-radius:12px; padding:3px 10px; font-size:12px; color:var(--muted); }
+  .hidden { display:none !important; }
+  pre { white-space:pre-wrap; background:var(--field); border:1px solid var(--border); padding:12px; border-radius:6px; font:13px/1.5 inherit; max-height:300px; overflow:auto; }
+  .hist { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-top:1px solid var(--border); }
+  /* overview */
+  .dash { display:flex; gap:28px; align-items:center; flex-wrap:wrap; }
+  .donut { width:170px; height:170px; flex:none; }
+  .donut .num { font-size:8px; font-weight:600; fill:var(--text); } .donut .sub { font-size:2.6px; fill:var(--muted); }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; flex:1; min-width:280px; }
+  button.tile { background:var(--field); border:1px solid var(--border); border-radius:8px; padding:12px; text-align:left; color:var(--text); font:inherit; }
+  button.tile:hover { border-color:var(--accent-dim); filter:none; } button.tile.active { border-color:var(--accent); background:var(--tile-active); }
+  .tile .num { font-size:24px; font-weight:600; line-height:1.2; }
+  .tile .lbl { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; text-transform:capitalize; }
+  .tile .pct { font-size:11px; color:var(--muted); margin-left:auto; }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex:none; }
+  .ranges { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .ranges button { padding:6px 12px; font-size:13px; background:transparent; color:var(--text); border:1px solid var(--border); }
+  .ranges button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  /* list */
+  .toolbar { display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap; align-items:center; }
+  .toolbar input { flex:1; min-width:200px; width:auto; margin:0; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; }
+  .st { padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; border:0; appearance:none; -webkit-appearance:none; cursor:pointer; }
+  .st.applied { background:#3a3f4a; color:#c8ccd6; } .st.interview { background:#4a4326; color:#d9b34c; }
+  .st.offer { background:#1e3f2c; color:#4caf7d; } .st.rejected { background:#45252a; color:#e0685f; } .st.update { background:#223349; color:#7fa8e0; }
+  [data-theme="light"] .st.applied { background:#e6e8ee; color:#4a5060; } [data-theme="light"] .st.interview { background:#f6ecc8; color:#7a5c05; }
+  [data-theme="light"] .st.offer { background:#d9f1e3; color:#17673f; } [data-theme="light"] .st.rejected { background:#f9dedb; color:#a1342c; } [data-theme="light"] .st.update { background:#dde8f7; color:#2d5a99; }
+  .pager { display:flex; align-items:center; justify-content:space-between; margin-top:12px; gap:10px; flex-wrap:wrap; }
+  .pager .btns { display:flex; gap:8px; }
+  .acts { white-space:nowrap; }
+  /* reply window */
+  .modal { position:fixed; inset:0; background:var(--overlay); display:flex; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; z-index:50; }
+  .modal .box { background:var(--panel); border:1px solid var(--border); border-radius:10px; max-width:680px; width:100%; padding:20px; }
+  .last { background:var(--field); border-radius:6px; padding:8px 10px; font-size:13px; color:var(--muted); margin:8px 0; }
+  .confirm { border:2px solid var(--warn-border); background:var(--warn-bg); border-radius:10px; padding:12px; margin-top:12px; }
+  #similar, #gSimilar { background:var(--warn-bg) !important; border-color:var(--warn-border) !important; }
+  #themeBtn { padding:6px 10px; }
 </style>
 </head>
 <body>
 <header>
   <h1>Job Tracker</h1>
-  <div id="who" class="row hidden"><button id="installBtn" class="ghost hidden">Install app</button><span id="whoName" class="muted"></span><button class="ghost" id="signOut">Sign out</button></div>
+  <div class="row"><button id="themeBtn" class="ghost small" title="Switch light / dark">Light</button>
+    <div id="who" class="row hidden"><button id="installBtn" class="ghost small hidden">Install app</button><span id="whoName" class="muted"></span><button class="ghost small" id="signOut">Sign out</button></div></div>
 </header>
 <main>
   <div id="signedOut" class="card center hidden">
@@ -61,7 +99,6 @@
   </div>
 
   <div id="signedIn" class="hidden">
-    <div class="card row"><strong>Signed in</strong><span class="badge" id="uidBadge"></span><span class="muted" id="meInfo"></span></div>
     <nav>
       <button data-tab="apps" class="on">Applications</button>
       <button data-tab="setup">Setup</button>
@@ -71,23 +108,30 @@
 
     <section id="tab-apps">
       <div class="card">
-        <div class="row" style="justify-content:space-between;flex-wrap:wrap">
-          <div><strong>Your applications</strong><div class="muted" id="scanInfo">Not scanned yet.</div></div>
+        <h2>Overview</h2>
+        <div class="ranges" id="ranges">
+          <button data-days="1">Last 24 hours</button><button data-days="3">3 days</button><button data-days="7">7 days</button><button data-days="all" class="active">All</button>
+        </div>
+        <div class="dash"><svg class="donut" id="donut" viewBox="0 0 42 42"></svg><div class="tiles" id="tiles"></div></div>
+      </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between;flex-wrap:wrap;margin-bottom:6px">
+          <h2 style="margin:0">Applications</h2>
           <div class="row">
+            <span class="muted" id="scanInfo">Not scanned yet.</span>
             <select id="scanDays" title="How far back the first scan looks"><option value="30">First scan: 30 days</option><option value="60" selected>First scan: 60 days</option><option value="120">First scan: 120 days</option></select>
             <button id="scanBtn">Connect Gmail and scan</button>
           </div>
         </div>
         <p class="muted" id="scanMsg"></p>
-        <div class="tiles" id="tiles"></div>
-        <div class="row" style="flex-wrap:wrap">
-          <input id="fSearch" placeholder="Search company or position" style="max-width:260px;margin:0">
-          <select id="fStatus"><option value="">All statuses</option><option>applied</option><option>interview</option><option>offer</option><option>rejected</option><option>update</option></select>
-          <select id="fRange"><option value="0">All time</option><option value="1">Last 24 hours</option><option value="3">Last 3 days</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select>
+        <div class="toolbar">
+          <input id="fSearch" placeholder="Search company or position...">
+          <select id="fSource"><option value="all">All sources</option></select>
+          <select id="fSize"><option value="25">25 per page</option><option value="50">50 per page</option><option value="100">100 per page</option></select>
         </div>
-        <table style="margin-top:12px"><thead><tr><th>Company</th><th>Position</th><th>Status</th><th>Applied</th><th>Last update</th><th></th></tr></thead><tbody id="appRows"></tbody></table>
+        <table><thead><tr><th>Company</th><th>Position</th><th>Status</th><th>Source</th><th>Applied</th><th></th></tr></thead><tbody id="appRows"></tbody></table>
         <p class="muted" id="appEmpty"></p>
-        <button class="ghost hidden" id="appMore">Show more</button>
+        <div class="pager"><span class="muted" id="pageInfo"></span><div class="btns"><button class="ghost small" id="pgPrev">Previous</button><button class="ghost small" id="pgNext">Next</button></div></div>
       </div>
     </section>
 
@@ -110,6 +154,11 @@
           <div class="row"><button id="keyTest" class="ghost">Test key</button><button id="vaultLock" class="ghost">Lock</button></div>
         </div>
         <p id="vaultMsg" class="muted"></p>
+      </div>
+      <div class="card">
+        <strong>Email replies</strong>
+        <p class="muted">Lets you write a reply with AI and save it to your Gmail Drafts (or send it, if the site owner has turned sending on). This asks Google for one extra permission, to create drafts and send mail. You can turn it off any time here, and remove the permission at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">your Google permissions page</a>.</p>
+        <div class="row"><button id="repAllow" class="ghost">Allow replies</button><button id="repOff" class="ghost hidden">Turn replies off</button><span id="repState" class="muted"></span></div>
       </div>
       <div class="card">
         <strong>Notifications</strong>
@@ -161,6 +210,26 @@
       <div class="card"><strong>Previous generations</strong><div id="hist" class="muted">Nothing yet.</div></div>
     </section>
   </div>
+<div id="rm" class="modal hidden"><div class="box">
+  <div class="row" style="justify-content:space-between"><strong id="rmTitle"></strong><button class="ghost small" id="rmClose">Close</button></div>
+  <div class="last" id="rmLast">Last message: checking...</div>
+  <div id="rmNeed" class="hidden"><p class="muted">Allow replies first. This asks Google for permission to create drafts and send mail.</p><button id="rmAllow">Allow replies</button></div>
+  <div id="rmMain">
+    <label>What should the reply say? (optional)</label>
+    <textarea id="rmInstr" style="min-height:70px" placeholder="For example: ask about next steps, or confirm Thursday works"></textarea>
+    <button id="rmWrite" class="ghost">Write with AI</button>
+    <label style="display:block;margin-top:10px">Reply (you can edit it)</label>
+    <textarea id="rmBody" style="min-height:180px"></textarea>
+    <div class="row"><button id="rmDraft">Save to Gmail drafts</button><button id="rmReview" class="ghost hidden">Review and send</button></div>
+    <div id="rmConfirm" class="confirm hidden">
+      <strong>Check before sending</strong>
+      <p class="muted" id="rmConfirmTo"></p>
+      <pre id="rmConfirmBody"></pre>
+      <div class="row"><button id="rmSend">Send now</button><button id="rmCancel" class="ghost">Cancel</button></div>
+    </div>
+  </div>
+  <p id="rmMsg" class="muted"></p>
+</div></div>
 <p class="muted" style="text-align:center;margin-top:24px"><a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></p>
 </main>
 
@@ -404,19 +473,24 @@ let scanning = false, gmailToken = null, gmailTokenExp = 0, tokenClient = null, 
 const appsCol = () => collection(db, "users", auth.currentUser.uid, "apps");
 const metaRef = () => doc(db, "users", auth.currentUser.uid, "meta", "scan");
 
-function getGmailToken() {
+const GMAIL_COMPOSE = "https://www.googleapis.com/auth/gmail.compose";
+let repliesAllowed = false, gmailHasCompose = false, canSend = false;
+function getGmailToken(needCompose = false) {
   return new Promise((resolve, reject) => {
-    if (gmailToken && Date.now() < gmailTokenExp - 60000) return resolve(gmailToken);
+    const wantCompose = needCompose || repliesAllowed;
+    if (gmailToken && Date.now() < gmailTokenExp - 60000 && (!wantCompose || gmailHasCompose)) return resolve(gmailToken);
     if (!window.google?.accounts?.oauth2) return reject(new Error("Google sign-in script did not load. Reload the page."));
     tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID, scope: GMAIL_SCOPE, hint: auth.currentUser.email,
+      client_id: GOOGLE_CLIENT_ID, scope: wantCompose ? GMAIL_SCOPE + " " + GMAIL_COMPOSE : GMAIL_SCOPE, hint: auth.currentUser.email,
       callback: (r) => {
         if (r.error) return reject(new Error(r.error === "access_denied" ? "Gmail access was not allowed." : "Could not connect Gmail (" + r.error + ")."));
-        gmailToken = r.access_token; gmailTokenExp = Date.now() + (r.expires_in || 3600) * 1000; resolve(gmailToken);
+        gmailToken = r.access_token; gmailTokenExp = Date.now() + (r.expires_in || 3600) * 1000;
+        gmailHasCompose = google.accounts.oauth2.hasGrantedAllScopes(r, GMAIL_COMPOSE);
+        resolve(gmailToken);
       },
       error_callback: () => reject(new Error("The Gmail permission window was closed.")),
     });
-    tokenClient.requestAccessToken({ prompt: gmailToken === null && !metaScan.lastScanAt ? "consent" : "" });
+    tokenClient.requestAccessToken({ prompt: (needCompose && !repliesAllowed) || (gmailToken === null && !metaScan.lastScanAt) ? "consent" : "" });
   });
 }
 
@@ -488,41 +562,216 @@ function autoScanIfStale() {
 }
 document.addEventListener("visibilitychange", autoScanIfStale);
 
-function renderApps() {
-  const q = norm($("fSearch").value), st = $("fStatus").value, days = +$("fRange").value;
-  const cutoff = days ? new Date(Date.now() - days * 86400000).toISOString().slice(0, 10) : "";
-  const inRange = apps.filter((a) => !cutoff || (a.appliedDate || "") >= cutoff);
-  const counts = { applied: 0, interview: 0, offer: 0, rejected: 0, update: 0 };
-  inRange.forEach((a) => { if (counts[a.status] !== undefined) counts[a.status]++; });
-  const tiles = $("tiles"); tiles.textContent = "";
-  for (const [k, v] of [["Total", inRange.length], ...Object.entries(counts)]) {
-    const t = document.createElement("div"); t.className = "tile";
-    const b = document.createElement("b"); b.textContent = v; t.append(b, k[0].toUpperCase() + k.slice(1)); tiles.appendChild(t);
+// ---- applications list: overview (donut + tiles), source, status, pages ----
+const STATUS_ORDER = ["applied", "interview", "offer", "rejected", "update"];
+const STATUS_COLORS = { applied: "#6b7385", interview: "#d9b34c", offer: "#4caf7d", rejected: "#e0685f", update: "#7fa8e0" };
+const SOURCES = [["linkedin.com", "LinkedIn"], ["wellfound.com", "Wellfound"], ["indeed.com", "Indeed"], ["naukri.com", "Naukri"], ["glassdoor.com", "Glassdoor"],
+  ["instahyre.com", "Instahyre"], ["cutshort.io", "Cutshort"], ["foundit.in", "Foundit"], ["monster.com", "Monster"], ["hirist.com", "Hirist"], ["ziprecruiter.com", "ZipRecruiter"], ["otta.com", "Otta"]];
+const ATS = ["greenhouse.io", "lever.co", "myworkday.com", "workday.com", "icims.com", "smartrecruiters.com", "taleo.net", "jobvite.com", "ashbyhq.com", "breezy.hr", "bamboohr.com",
+  "successfactors.com", "workable.com", "workablemail.com", "recruitee.com", "recruitee-mail.com", "brassring.com", "ultipro.com", "darwinbox.in", "darwinbox.com", "kekamail.com"];
+const statusKey = (s) => (s || "applied").toString().trim().toLowerCase() || "applied";
+function sourceOf(a) {
+  const m = /@([^>\s]+)/.exec(a.sender || ""), domain = (m ? m[1] : "").toLowerCase();
+  const hit = SOURCES.find(([d]) => domain === d || domain.endsWith("." + d));
+  if (hit) return hit[1];
+  return ATS.some((d) => domain === d || domain.endsWith("." + d)) ? "Company portal (ATS)" : "Company portal";
+}
+const view = Object.assign({ days: "all", status: "all", source: "all", query: "", page: 1, pageSize: 25 }, (() => { try { return JSON.parse(localStorage.getItem("jt.view") || "{}"); } catch { return {}; } })());
+const saveView = () => { try { localStorage.setItem("jt.view", JSON.stringify(view)); } catch {} };
+// Applied date is a plain day, so "Last 24 hours" means today and yesterday.
+function inRange(a) {
+  if (view.days === "all") return true;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(a.appliedDate || ""); if (!m) return false;
+  const applied = new Date(+m[1], +m[2] - 1, +m[3]), now = new Date();
+  return Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - applied) / 86400000) <= +view.days;
+}
+function renderDashboard() {
+  const scoped = apps.filter(inRange), counts = {};
+  scoped.forEach((a) => { const k = statusKey(a.status); counts[k] = (counts[k] || 0) + 1; });
+  const total = scoped.length, order = STATUS_ORDER.filter((k) => counts[k]).concat(Object.keys(counts).filter((k) => !STATUS_ORDER.includes(k)).sort());
+  let acc = 0, segs = "";
+  for (const k of order) {
+    const pct = total ? (counts[k] / total) * 100 : 0;
+    segs += `<circle cx="21" cy="21" r="15.9155" fill="none" stroke="${STATUS_COLORS[k] || "#a78bda"}" stroke-width="5" stroke-dasharray="${pct.toFixed(3)} ${(100 - pct).toFixed(3)}" stroke-dashoffset="${(25 - acc).toFixed(3)}"><title>${k}: ${counts[k]} (${pct.toFixed(0)}%)</title></circle>`;
+    acc += pct;
   }
-  const rows = inRange.filter((a) => (!st || a.status === st) && (!q || norm(a.company + " " + a.position).includes(q)))
-    .sort((a, b) => (b.appliedDate || "").localeCompare(a.appliedDate || ""));
-  const body = $("appRows"); body.textContent = "";
-  rows.slice(0, shown).forEach((a) => {
+  $("donut").innerHTML = `<circle cx="21" cy="21" r="15.9155" fill="none" stroke="var(--border)" stroke-width="5"/>${segs}<text x="21" y="22.5" text-anchor="middle" class="num">${total}</text><text x="21" y="27" text-anchor="middle" class="sub">${total === 1 ? "application" : "applications"}</text>`;
+  const tiles = $("tiles"); tiles.textContent = "";
+  const add = (key, label, n, color) => {
+    const b = document.createElement("button"); b.className = "tile" + (view.status === key ? " active" : ""); b.dataset.status = key;
+    const num = document.createElement("div"); num.className = "num"; num.textContent = n;
+    const lbl = document.createElement("div"); lbl.className = "lbl";
+    const dot = document.createElement("span"); dot.className = "dot"; dot.style.background = color; lbl.append(dot, label);
+    if (key !== "all" && total) { const p = document.createElement("span"); p.className = "pct"; p.textContent = Math.round((n / total) * 100) + "%"; lbl.appendChild(p); }
+    b.append(num, lbl);
+    b.onclick = () => { view.status = view.status === key ? "all" : key; view.page = 1; renderDashboard(); renderTable(); };
+    tiles.appendChild(b);
+  };
+  add("all", "total", total, "var(--text)");
+  const four = ["applied", "interview", "offer", "rejected"];
+  four.concat(order.filter((k) => !four.includes(k))).forEach((k) => add(k, k, counts[k] || 0, STATUS_COLORS[k] || "#a78bda"));
+}
+function refreshSourceOptions() {
+  const counts = {}; apps.forEach((a) => { const s = sourceOf(a); counts[s] = (counts[s] || 0) + 1; });
+  const sel = $("fSource"); sel.textContent = "";
+  const all = document.createElement("option"); all.value = "all"; all.textContent = "All sources"; sel.appendChild(all);
+  Object.keys(counts).sort().forEach((s) => { const o = document.createElement("option"); o.value = s; o.textContent = `${s} (${counts[s]})`; sel.appendChild(o); });
+  sel.value = counts[view.source] ? view.source : "all"; view.source = sel.value;
+}
+function renderTable() {
+  const q = norm(view.query);
+  const rows = apps.filter(inRange).filter((a) => (view.source === "all" || sourceOf(a) === view.source) && (view.status === "all" || statusKey(a.status) === view.status)
+    && (!q || norm(a.company + " " + a.position).includes(q))).sort((a, b) => (b.appliedDate || "").localeCompare(a.appliedDate || ""));
+  const pages = Math.max(1, Math.ceil(rows.length / view.pageSize)); view.page = Math.min(Math.max(1, view.page), pages); saveView();
+  const from = (view.page - 1) * view.pageSize, body = $("appRows"); body.textContent = "";
+  rows.slice(from, from + view.pageSize).forEach((a) => {
     const tr = document.createElement("tr");
     const cell = (txt) => { const td = document.createElement("td"); td.textContent = txt || ""; tr.appendChild(td); return td; };
     cell(a.company); cell(a.position);
-    const sTd = document.createElement("td"), sel = document.createElement("select");
-    ["applied", "interview", "offer", "rejected", "update"].forEach((o) => { const op = document.createElement("option"); op.textContent = o; op.selected = o === a.status; sel.appendChild(op); });
-    sel.onchange = async () => { a.status = sel.value; await updateDoc(doc(appsCol(), a.id), { status: sel.value }); renderApps(); };
+    const sTd = document.createElement("td"), sel = document.createElement("select"); sel.className = "st " + statusKey(a.status);
+    STATUS_ORDER.forEach((o) => { const op = document.createElement("option"); op.textContent = o; op.selected = o === statusKey(a.status); sel.appendChild(op); });
+    sel.onchange = async () => { a.status = sel.value; await updateDoc(doc(appsCol(), a.id), { status: sel.value }); renderDashboard(); renderTable(); };
     sTd.appendChild(sel); tr.appendChild(sTd);
-    cell(a.appliedDate); cell((a.lastUpdate || "").slice(0, 10));
-    const lTd = document.createElement("td");
-    if ((a.gmailLink || "").startsWith("https://mail.google.com/")) {
-      const l = document.createElement("a"); l.href = a.gmailLink; l.target = "_blank"; l.rel = "noopener"; l.textContent = "Open"; lTd.appendChild(l);
+    cell(sourceOf(a)); cell(a.appliedDate);
+    const act = document.createElement("td"); act.className = "acts";
+    if ((a.gmailLink || "").startsWith("https://mail.google.com/")) { const l = document.createElement("a"); l.href = a.gmailLink; l.target = "_blank"; l.rel = "noopener"; l.textContent = "email ↗"; act.appendChild(l); }
+    if (!replyBlocked(a)) {   // no Reply button at all when replying is not possible for this row
+      const rb = document.createElement("button"); rb.className = "ghost small"; rb.style.marginLeft = "8px"; rb.textContent = "Reply"; rb.onclick = () => openReply(a); act.appendChild(rb);
     }
-    tr.appendChild(lTd); body.appendChild(tr);
+    tr.appendChild(act); body.appendChild(tr);
   });
   $("appEmpty").textContent = rows.length ? "" : (apps.length ? "No applications match these filters." : "No applications yet. Connect Gmail and scan.");
-  $("appMore").classList.toggle("hidden", rows.length <= shown);
+  $("pageInfo").textContent = rows.length ? `Showing ${from + 1}-${Math.min(from + view.pageSize, rows.length)} of ${rows.length}` : "";
+  $("pgPrev").disabled = view.page <= 1; $("pgNext").disabled = view.page >= pages;
 }
-["fSearch", "fStatus", "fRange"].forEach((id) => $(id).addEventListener("input", () => { shown = 50; renderApps(); }));
-$("appMore").onclick = () => { shown += 50; renderApps(); };
+function renderApps() { refreshSourceOptions(); renderDashboard(); renderTable(); }
+function syncControls() {
+  $("fSearch").value = view.query; $("fSize").value = String(view.pageSize);
+  document.querySelectorAll("#ranges button").forEach((b) => b.classList.toggle("active", b.dataset.days === String(view.days)));
+}
+document.querySelectorAll("#ranges button").forEach((b) => b.onclick = () => { view.days = b.dataset.days; view.page = 1; syncControls(); renderDashboard(); renderTable(); });
+$("fSearch").addEventListener("input", () => { view.query = $("fSearch").value; view.page = 1; renderTable(); });
+$("fSource").onchange = () => { view.source = $("fSource").value; view.page = 1; renderTable(); };
+$("fSize").onchange = () => { view.pageSize = +$("fSize").value; view.page = 1; renderTable(); };
+$("pgPrev").onclick = () => { view.page--; renderTable(); }; $("pgNext").onclick = () => { view.page++; renderTable(); };
+syncControls();
+// light / dark switch (remembered in this browser)
+function paintTheme() { const t = document.documentElement.dataset.theme; $("themeBtn").textContent = t === "light" ? "Dark" : "Light"; document.querySelector('meta[name="theme-color"]').content = t === "light" ? "#f6f7f9" : "#171a21"; }
+$("themeBtn").onclick = () => { const t = document.documentElement.dataset.theme === "light" ? "dark" : "light"; document.documentElement.dataset.theme = t; try { localStorage.setItem("jt.theme", t); } catch {} paintTheme(); };
+paintTheme();
 
+
+
+// ---------- replies: write with AI, save to Gmail drafts, guarded send ----------
+const NO_REPLY = /(no[-_.]?reply|do[-_.]?not[-_.]?reply|mailer-daemon|postmaster|bounce)/i;
+const isBoardSource = (a) => SOURCES.some(([, name]) => name === sourceOf(a));
+function replyBlocked(a) {   // the server checks again; this only hides the button early
+  if (statusKey(a.status) === "rejected") return "This application was rejected";
+  if (isBoardSource(a)) return "Arrived through a job board, replies would not reach the employer";
+  if (NO_REPLY.test(a.sender || "")) return "No-reply address";
+  return "";
+}
+const settingsRef = () => doc(db, "users", auth.currentUser.uid, "meta", "settings");
+const sentRef = () => doc(db, "users", auth.currentUser.uid, "meta", "sent");
+async function loadReplySettings() {
+  const s = await getDoc(settingsRef());
+  repliesAllowed = !!(s.exists() && s.data().repliesAllowed);
+  try { canSend = !!(await api("/api/config")).can_send; } catch { canSend = false; }
+  showRepState();
+}
+function showRepState() {
+  $("repState").textContent = repliesAllowed ? "On." : "Off.";
+  $("repAllow").classList.toggle("hidden", repliesAllowed);
+  $("repOff").classList.toggle("hidden", !repliesAllowed);
+}
+async function allowReplies() {
+  await getGmailToken(true);
+  repliesAllowed = true;
+  await setDoc(settingsRef(), { repliesAllowed: true }, { merge: true });
+  showRepState();
+}
+$("repAllow").onclick = async () => { try { await allowReplies(); } catch (e) { $("repState").textContent = e.message; } };
+$("repOff").onclick = async () => { repliesAllowed = false; await setDoc(settingsRef(), { repliesAllowed: false }, { merge: true }); showRepState(); };
+
+let rm = null;   // the reply being written: {app, confirm}
+const rmMsg = (t) => { $("rmMsg").textContent = t || ""; };
+const draftKey = () => "jt.replyDraft." + auth.currentUser.uid + "." + rm.app.threadId;
+const gmailHeaders = (token) => ({ "Content-Type": "application/json", "X-Gmail-Token": token });
+async function loadSentLog() { const s = await getDoc(sentRef()); return s.exists() ? (s.data().entries || []) : []; }
+
+async function openReply(a) {
+  rm = { app: a, confirm: null };
+  $("rmTitle").textContent = `Reply: ${a.company} - ${a.position}`;
+  $("rmLast").textContent = "Last message: checking..."; rmMsg("");
+  $("rmConfirm").classList.add("hidden");
+  $("rmBody").value = localStorage.getItem(draftKey()) || ""; $("rmInstr").value = "";
+  $("rmReview").classList.toggle("hidden", !canSend);
+  $("rm").classList.remove("hidden");
+  $("rmNeed").classList.toggle("hidden", repliesAllowed); $("rmMain").classList.toggle("hidden", !repliesAllowed);
+  if (repliesAllowed) loadLast();
+  else $("rmLast").textContent = "Allow replies to see the last message in this chain.";
+}
+async function loadLast() {
+  try {
+    const t = await getGmailToken(true);
+    const r = await api("/api/reply/context", { method: "POST", headers: gmailHeaders(t), body: JSON.stringify({ thread_id: rm.app.threadId }) });
+    $("rmLast").textContent = `Last message (${r.direction === "sent" ? "sent by you" : "received"}, ${new Date(r.date).toLocaleDateString()}): ${r.subject}`;
+  } catch (e) { $("rmLast").textContent = "Last message: " + e.message; }
+}
+$("rmClose").onclick = () => { $("rm").classList.add("hidden"); rm = null; };
+$("rmAllow").onclick = async () => {
+  try { await allowReplies(); $("rmNeed").classList.add("hidden"); $("rmMain").classList.remove("hidden"); $("rmReview").classList.toggle("hidden", !canSend); loadLast(); }
+  catch (e) { rmMsg(e.message); }
+};
+$("rmBody").addEventListener("input", () => { if (rm) { const v = $("rmBody").value; v ? localStorage.setItem(draftKey(), v) : localStorage.removeItem(draftKey()); $("rmConfirm").classList.add("hidden"); } });
+
+$("rmWrite").onclick = async () => {
+  if (!geminiKey) { rmMsg("Unlock your Gemini key in Setup first."); return; }
+  rmMsg("Writing...");
+  try {
+    const t = await getGmailToken(true);
+    const r = await api("/api/reply/write", { method: "POST", needsKey: true, headers: gmailHeaders(t),
+      body: JSON.stringify({ thread_id: rm.app.threadId, instructions: $("rmInstr").value, company: rm.app.company, position: rm.app.position,
+        status: rm.app.status, core_text: coreCv?.text || "", name: coreCv?.struct?.name || "" }) });
+    $("rmBody").value = r.body; localStorage.setItem(draftKey(), r.body);
+    rmMsg(`Draft ready for ${r.to}. Read it and edit anything you like.`);
+  } catch (e) { rmMsg(e.message); }
+};
+$("rmDraft").onclick = async () => {
+  rmMsg("Saving to Gmail drafts...");
+  try {
+    const t = await getGmailToken(true);
+    const r = await api("/api/reply/draft", { method: "POST", headers: gmailHeaders(t), body: JSON.stringify({ thread_id: rm.app.threadId, body: $("rmBody").value, status: rm.app.status }) });
+    rmMsg(`Saved to your Gmail drafts (to ${r.to}). Open Gmail to review and send it.`);
+  } catch (e) { rmMsg(e.message); }
+};
+$("rmReview").onclick = async () => {
+  rmMsg("Checking...");
+  try {
+    const t = await getGmailToken(true);
+    const r = await api("/api/reply/prepare", { method: "POST", headers: gmailHeaders(t),
+      body: JSON.stringify({ thread_id: rm.app.threadId, body: $("rmBody").value, company: rm.app.company, status: rm.app.status, sent_log: await loadSentLog() }) });
+    rm.confirm = r;
+    $("rmConfirmTo").textContent = `To: ${r.to}   Subject: ${r.subject}   (${r.sends_left_today} send(s) left today)`;
+    $("rmConfirmBody").textContent = r.body;
+    $("rmConfirm").classList.remove("hidden"); rmMsg("");
+  } catch (e) { rmMsg(e.message); }
+};
+$("rmCancel").onclick = () => { $("rmConfirm").classList.add("hidden"); rm.confirm = null; };
+$("rmSend").onclick = async () => {
+  if (!rm?.confirm) return;
+  $("rmSend").disabled = true; rmMsg("Sending...");
+  try {
+    const t = await getGmailToken(true), log = await loadSentLog();
+    const r = await api("/api/reply/send", { method: "POST", headers: gmailHeaders(t),
+      body: JSON.stringify({ thread_id: rm.app.threadId, body: rm.confirm.body, confirm_token: rm.confirm.confirm_token, company: rm.app.company, status: rm.app.status, sent_log: log }) });
+    if (r.entry) await setDoc(sentRef(), { entries: [...log, r.entry].slice(-150) });
+    localStorage.removeItem(draftKey());   // the sent text is not kept
+    $("rmBody").value = ""; $("rmConfirm").classList.add("hidden"); rm.confirm = null;
+    rmMsg(r.already_sent ? `That reply was already sent to ${r.to}.` : `Sent to ${r.to}.`);
+  } catch (e) { rmMsg(e.message); }
+  finally { $("rmSend").disabled = false; }
+};
 
 // ---------- PWA: install, notifications ----------
 let swReg = null, installEvent = null;
@@ -586,7 +835,7 @@ $("signIn").onclick = async () => {
       ? "This website address is not allowed yet. Add it under Firebase > Authentication > Settings > Authorized domains."
       : (e.message || "Sign-in failed."); }
 };
-$("signOut").onclick = () => { geminiKey = null; gmailToken = null; coreCv = null; apps = []; signOut(auth); };
+$("signOut").onclick = () => { geminiKey = null; gmailToken = null; gmailHasCompose = false; repliesAllowed = false; coreCv = null; apps = []; signOut(auth); };
 
 getRedirectResult(auth).catch((e) => { $("authErr").textContent = e.message || "Sign-in failed."; });
 
@@ -596,10 +845,7 @@ onAuthStateChanged(auth, async (user) => {
   $("who").classList.toggle("hidden", !user);
   if (!user) return;
   $("whoName").textContent = user.displayName || user.email;
-  $("uidBadge").textContent = "id " + user.uid.slice(0, 6) + "...";
-  try { const me = await api("/api/me"); $("meInfo").textContent = `Server verified ${me.email}.`; }
-  catch (e) { $("meInfo").textContent = "Server check failed: " + e.message; }
-  try { await refreshVault(); await loadCv(); await loadHistory(); await loadApps(); autoScanIfStale(); }
+  try { await refreshVault(); await loadCv(); await loadHistory(); await loadApps(); await loadReplySettings(); autoScanIfStale(); }
   catch (e) { $("vaultMsg").textContent = "Could not read your data: " + e.message; }
 });
 </script>
