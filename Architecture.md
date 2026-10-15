@@ -2,7 +2,7 @@
 
 A personal job-application tracker that runs at zero cost. It reads your Gmail, records each application in a Google Sheet, tells you about replies on Telegram, and has a small web portal for viewing applications, tailoring CVs with AI, and writing or sending replies.
 
-Status of this document: describes the system as built (single user), organised by delivery phase. Phase 5 is in progress.
+Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 7 (multi-user) is the current phase; Phase 6 is parked.
 
 ## Delivery phases
 
@@ -58,7 +58,7 @@ Goal: use the portal as the daily surface.
 - Gemini resilience: timeout, retry, fallback model, thinking-off with 400 fallback.
 - Branch-based release and rollback process; this document.
 
-### Phase 5: Status accuracy and scheduler cleanup (current)
+### Phase 5: Status accuracy, scheduler cleanup and document fidelity (done)
 Goal: the Status column can be trusted, and each scan runs exactly once.
 
 | # | Item | Result |
@@ -67,20 +67,41 @@ Goal: the Status column can be trusted, and each scan runs exactly once.
 | 2 | Stage-progress emails ("you're through to the assignment stage") update the matching application and never create a row | Implemented: `classifier.is_stage_progress_email`, new branch in `automation.scan_new_applications`, and `classify_update` maps them to `interview`. Unmatched ones are dropped. |
 | 3 | Repair existing stray rows (for example Swymcorp) | `repair_positions.py` blanks the pasted subject and sets the status. |
 | 4 | Remove GitHub's own `schedule:` from `scan.yml` | Done. Runs now come only from cron-job.org, the backup endpoint and manual dispatch. |
+| 5 | Generated CV keeps the core CV's format, structure and length (one page, two at most) | The core CV is parsed once into a fixed JSON structure (`cv_struct.py`, links read from the PDF). Gemini may only reword allowed text fields; a validator copies everything structural from the original and rejects new numbers, new skills and over-long text. `cv_render.py` draws the PDF in the original design with bundled Carlito fonts. |
+| 6 | Cover letter follows the user's own letter format | Header, rule, date, greeting and sign-off are drawn by `cv_render.render_cover_letter`; Gemini writes only 4 short body paragraphs (prompt `cover_letter_v2`). |
+| 7 | Out-of-memory restarts on Render (512 MB) | One shared Google client per service with a lock around network calls (`google_auth.get_service`), and a 4-thread cap. Baseline is about 140 MB. |
 
 Exit check: after deploy, run `python3 repair_positions.py` (preview, then `--apply`); confirm the next two scheduled scans fire once each at 12:00 and 19:00 IST; confirm Swymcorp shows `interview`.
 
-### Phase 6: Follow-up reminders (next)
+### Phase 6: Follow-up reminders (parked)
+Decision: not started. It is built later only if it turns out to be needed after Phase 7.
 Goal: never forget to chase an application.
 - A "no reply in 7 days" list on the dashboard (applications still at `applied` older than 7 days, not rejected, with a replyable sender).
 - One-click Reply from the list using the existing reply window.
 - Reuses the sent log so a follow-up already sent does not reappear.
 
-### Phase 7: Multi-user accounts (later)
-Goal: let other job seekers use it safely.
-- Firebase Auth and Firestore with per-user security rules.
+### Phase 7: Multi-user accounts (current, branch `phase-7-multi-user`)
+Goal: let other job seekers use the portal with their own Google account and their own free Gemini key, at no running cost to the owner, and without the owner or other users being able to read their data or keys.
+
+Requirements
+- Each user signs in, connects their own Gmail, and owns their own data (applications, core CV, generated files, prompts, settings). Nothing is shared between users.
+- Bring-your-own Gemini key: each user pastes a key from aistudio.google.com (free tier, no card). The owner's key is never used for other users, so the owner pays nothing and the free-tier quota is per user.
+- Keys and Google tokens are stored encrypted and are never sent back to the browser or written to logs.
+- Everything must stay inside free tiers: hosting, auth, database and storage.
+
+Proposed building blocks (to be confirmed in the design step)
+- Firebase Auth for sign-in; Firestore with per-user security rules for application data; encrypted per-user secrets.
+- Scanning moves from one shared GitHub Actions job to a per-user scan the user can trigger, with scheduled runs only if the free tier allows.
 - HubSpot-style pipeline board with user-editable stages; spreadsheet export; bring-your-own Telegram bot; stateless tailoring flow.
-- Preconditions: a Gemini free-tier limit check under multi-user load, and Google's restricted-scope review for per-user Gmail access.
+
+Open questions and preconditions
+- Google's restricted-scope review for per-user Gmail access (gmail.readonly and gmail.compose), and the 100-user cap while the app is unverified.
+- Gemini free-tier limits per key and what the portal does when a user's quota is exhausted.
+- Where per-user secrets live safely on a free tier, and how the owner is kept unable to read them.
+- Data migration of the owner's current Sheet data into the new per-user store.
+- Whether the existing single-user instance stays as is while the multi-user version is built beside it.
+
+Exit check: a second person can sign up, add their key, connect Gmail, see only their own applications and generate a CV, while the owner's data and key are untouched.
 
 ---
 
@@ -422,4 +443,4 @@ Two scans a day are a hard requirement (12:00 and 19:00 IST). GitHub's own `sche
 - Gemini free tier can return 503 under load; retries and the fallback model reduce but do not remove this.
 - The Reply button is enabled or disabled from the original confirmation's sender; the server makes the final decision from the latest message.
 
-**Planned, not built:** see Phase 6 and Phase 7 above.
+**Planned, not built:** Phase 7 (current) and Phase 6 (parked), see above.
