@@ -2,7 +2,7 @@
 
 A personal job-application tracker that runs at zero cost. It reads your Gmail, records each application in a Google Sheet, tells you about replies on Telegram, and has a small web portal for viewing applications, tailoring CVs with AI, and writing or sending replies.
 
-Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 6 (multi-user) is the current phase. Unscheduled ideas are listed under Future aspects.
+Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 6 (multi-user) is built; Phase 7 (installable app and notifications) is the current phase. Unscheduled ideas are listed under Future aspects.
 
 ## Delivery phases
 
@@ -73,7 +73,7 @@ Goal: the Status column can be trusted, and each scan runs exactly once.
 
 Exit check: after deploy, run `python3 repair_positions.py` (preview, then `--apply`); confirm the next two scheduled scans fire once each at 12:00 and 19:00 IST; confirm Swymcorp shows `interview`.
 
-### Phase 6: Multi-user accounts (current, branch `phase-6-multi-user`)
+### Phase 6: Multi-user accounts (branch `phase-6-multi-user`)
 Goal: other job seekers use the portal with their own Google account and their own free Gemini key, at no running cost to the owner, with the owner unable to read their data or keys.
 
 Decisions (confirmed)
@@ -107,6 +107,22 @@ Open risks
 - Migrating the owner's current Sheet data into Firestore is optional and not part of the first release.
 
 Exit check: a second person signs up, adds their key, connects Gmail, sees only their own applications and generates a CV, while the owner's data and key are untouched.
+
+### Phase 7: Installable app and notifications (current, branch `phase-7-pwa-notifications`)
+Goal: users can install the multi-user portal as an app and get notified about changes found by a scan.
+
+Decisions (confirmed)
+- The owner's own scheduled scans (cron-job.org) and Telegram alerts stay exactly as they are on the single-user portal. Other users do not get scheduled scans or Telegram.
+- Other users get notifications through the installed app (PWA), not WhatsApp (WhatsApp business messages are not free) and not Telegram.
+- Accepted limit: a notification can only fire when a scan runs, so there are no alerts while the app is closed. Background scanning would need each user's long-lived Gmail permission stored on a server, which breaks the "nothing secret is stored" rule from Phase 6, so it is not part of this phase.
+
+Built
+- Web app manifest, icons (including a maskable one) and a service worker served from the site root. The worker caches only the manifest and icons; it never touches `/api/`, sign-in pages or user data.
+- Install button in the header (and the browser or phone menu); on iPhone, Add to Home Screen.
+- Notifications card in Setup: the user allows notifications once; after a scan finds new applications, or a rejection, interview or offer, a notification summarises it. Tapping it opens the app.
+- Auto-scan when the app is opened or returns to the foreground and the last scan is over 30 minutes old. If the browser blocks Google's permission window (no tap), it falls back to a "Tap Scan" hint.
+
+Exit check: install the app on a phone and a laptop, turn on notifications, run a scan that finds a new application, and see the notification.
 
 ### Future aspects (not scheduled)
 Ideas that are not part of any phase yet. Each is built only if it proves needed once the phase before it ships.
@@ -457,4 +473,4 @@ Two scans a day are a hard requirement (12:00 and 19:00 IST). GitHub's own `sche
 - Gemini free tier can return 503 under load; retries and the fallback model reduce but do not remove this.
 - The Reply button is enabled or disabled from the original confirmation's sender; the server makes the final decision from the latest message.
 
-**Planned, not built:** Phase 6 (current) and the Future aspects list, see above.
+**Planned, not built:** Phase 7 (current) and the Future aspects list, see above.

@@ -344,6 +344,17 @@ def scan_process(req: ScanProcessRequest, user: dict = Depends(current_user), x_
     return out
 
 
+@app.get("/manifest.json", include_in_schema=False)
+def manifest():
+    return FileResponse(STATIC_DIR / "manifest.json", media_type="application/manifest+json")
+
+
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    # Served from the root so it can control the whole site; never cached so updates arrive at once.
+    return FileResponse(STATIC_DIR / "sw.js", media_type="application/javascript", headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/privacy")
 def privacy():
     return FileResponse(STATIC_DIR / "privacy.html")
