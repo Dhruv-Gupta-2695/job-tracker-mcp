@@ -82,7 +82,7 @@ def rate_limit(uid: str, kind: str) -> None:
 def gemini_key(x_gemini_key: str | None = Header(default=None)) -> str:
     """The user's own Gemini key, sent per request. Used for that call only; never stored or logged."""
     key = (x_gemini_key or "").strip()
-    if not re.fullmatch(r"[A-Za-z0-9_\-]{20,80}", key):
+    if not re.fullmatch(r"[A-Za-z0-9_.\-]{20,120}", key):
         raise HTTPException(status_code=400, detail="Add and unlock your Gemini key first (Setup tab).")
     return key
 

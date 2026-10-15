@@ -175,7 +175,7 @@ async function refreshVault() {
 }
 $("vaultSave").onclick = async () => {
   const key = $("keyIn").value.trim(), p1 = $("pass1").value, p2 = $("pass2").value;
-  if (!/^[A-Za-z0-9_\-]{20,80}$/.test(key)) { $("vaultMsg").textContent = "That does not look like a Gemini key."; return; }
+  if (!/^[A-Za-z0-9_.\-]{20,120}$/.test(key)) { $("vaultMsg").textContent = "That does not look like a Gemini key."; return; }
   if (p1.length < 8 || p1 !== p2) { $("vaultMsg").textContent = "Passphrases must match and be 8+ characters."; return; }
   $("vaultMsg").textContent = "Encrypting...";
   await setDoc(vaultRef(), { ...(await vaultEncrypt(key, p1)), updatedAt: serverTimestamp() });
