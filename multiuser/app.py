@@ -18,7 +18,8 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -209,6 +210,30 @@ def _with_key(key: str, fn, *args):
     from src import ai_generate
     ai_generate.use_user_key(key)
     return fn(*args)
+
+
+# --- Same-tab Google sign-in ----------------------------------------------
+# Firebase's sign-in helper pages live on <project>.firebaseapp.com. Serving them through
+# this site's own address lets the browser sign in by redirect (same tab, no extra pop-up
+# tab) without third-party storage problems. Only these two fixed paths are forwarded.
+FIREBASE_AUTH_HOST = os.environ.get("FIREBASE_AUTH_HOST", f"{FIREBASE_PROJECT_ID}.firebaseapp.com")
+
+
+@app.api_route("/__/auth/{path:path}", methods=["GET", "POST"])
+@app.api_route("/__/firebase/{path:path}", methods=["GET"])
+def firebase_auth_proxy(request: Request, path: str):
+    import requests
+    base = "/__/auth/" if request.url.path.startswith("/__/auth/") else "/__/firebase/"
+    url = f"https://{FIREBASE_AUTH_HOST}{base}{path}"
+    try:
+        if request.method == "POST":
+            upstream = requests.post(url, params=dict(request.query_params), timeout=10)
+        else:
+            upstream = requests.get(url, params=dict(request.query_params), timeout=10)
+    except requests.RequestException:
+        raise HTTPException(status_code=502, detail="Sign-in helper is unavailable. Try again.")
+    return Response(content=upstream.content, status_code=upstream.status_code,
+                    media_type=upstream.headers.get("content-type", "text/html"))
 
 
 @app.get("/")

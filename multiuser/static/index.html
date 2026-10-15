@@ -108,7 +108,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { getFirestore, doc, setDoc, getDoc, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
@@ -122,6 +122,11 @@ const firebaseConfig = {
   messagingSenderId: "1043405535011",
   appId: "1:1043405535011:web:b00d7bdeee321151f93e96"
 };
+// On localhost (plain http) sign in with a pop-up. On the deployed https site, sign in by
+// redirect in the same tab, using this site's own address for Firebase's helper pages
+// (the server forwards /__/auth/ to Firebase), so no extra tab is left behind.
+const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
+if (!isLocal) firebaseConfig.authDomain = location.host;
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -271,12 +276,16 @@ document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
 });
 $("signIn").onclick = async () => {
   $("authErr").textContent = "";
-  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
-  catch (e) { $("authErr").textContent = e.code === "auth/unauthorized-domain"
+  try {
+    const provider = new GoogleAuthProvider();
+    if (isLocal) await signInWithPopup(auth, provider); else await signInWithRedirect(auth, provider);
+  } catch (e) { $("authErr").textContent = e.code === "auth/unauthorized-domain"
       ? "This website address is not allowed yet. Add it under Firebase > Authentication > Settings > Authorized domains."
       : (e.message || "Sign-in failed."); }
 };
 $("signOut").onclick = () => { geminiKey = null; coreCv = null; signOut(auth); };
+
+getRedirectResult(auth).catch((e) => { $("authErr").textContent = e.message || "Sign-in failed."; });
 
 onAuthStateChanged(auth, async (user) => {
   $("signedOut").classList.toggle("hidden", !!user);
