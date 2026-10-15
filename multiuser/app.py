@@ -273,6 +273,8 @@ def scan_list(req: ScanListRequest, user: dict = Depends(current_user), x_gmail_
         ids = gmail_rest.list_message_ids(token, since, set(req.seen_ids))
     except gmail_rest.GmailTokenError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except gmail_rest.GmailBusyError as exc:
+        raise HTTPException(status_code=429, detail="Gmail is busy. Try the scan again in a minute.") from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail="Could not read Gmail right now. Try again.") from exc
     return {"ids": ids, "started_at": datetime.now(timezone.utc).isoformat()}
@@ -295,6 +297,8 @@ def scan_process(req: ScanProcessRequest, user: dict = Depends(current_user), x_
         messages = gmail_rest.fetch_messages(token, req.ids)
     except gmail_rest.GmailTokenError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except gmail_rest.GmailBusyError as exc:
+        raise HTTPException(status_code=429, detail="Gmail is busy. Waiting a moment...") from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail="Could not read Gmail right now. Try again.") from exc
     out = scan_core.process_messages(messages, req.existing, set(), req.user_email or user.get("email", ""))

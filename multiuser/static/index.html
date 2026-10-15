@@ -389,8 +389,16 @@ $("scanBtn").onclick = async () => {
       $("scanMsg").textContent = `Reading your mail: ${done} of ${total}...`;
       token = await getGmailToken();   // refreshes if the hour ran out mid-scan
       const chunk = list.ids.slice(i, i + 40);
-      const r = await api("/api/scan/process", { method: "POST", headers: { "Content-Type": "application/json", "X-Gmail-Token": token },
-        body: JSON.stringify({ ids: chunk, existing: [...working.values()], user_email: auth.currentUser.email }) });
+      let r = null;
+      for (let attempt = 0; attempt < 5 && !r; attempt++) {
+        try {
+          r = await api("/api/scan/process", { method: "POST", headers: { "Content-Type": "application/json", "X-Gmail-Token": token },
+            body: JSON.stringify({ ids: chunk, existing: [...working.values()], user_email: auth.currentUser.email }) });
+        } catch (err) {
+          if (!/busy/i.test(err.message) || attempt === 4) throw err;
+          for (let s = 20; s > 0; s--) { $("scanMsg").textContent = `Gmail asked us to slow down. Continuing in ${s}s (${done} of ${total} done)...`; await new Promise((ok) => setTimeout(ok, 1000)); }
+        }
+      }
       if (r.upserts.length) {
         const batch = writeBatch(db);
         r.upserts.forEach((a) => { working.set(a.threadId, a); batch.set(doc(appsCol(), a.threadId), a, { merge: true }); });

@@ -16,11 +16,21 @@ BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
 MAX_MESSAGES = 600
 
 
+class GmailBusyError(RuntimeError):
+    """Gmail is rate-limiting this connection; waiting a little and retrying works."""
+
+
 class GmailTokenError(RuntimeError):
     """The access token was rejected (expired, revoked or missing the Gmail permission)."""
 
 
+def _is_rate_limited(resp: requests.Response) -> bool:
+    return resp.status_code == 429 or (resp.status_code == 403 and "ratelimit" in resp.text.lower().replace(" ", ""))
+
+
 def _check(resp: requests.Response) -> None:
+    if _is_rate_limited(resp):
+        raise GmailBusyError("Gmail is asking us to slow down.")
     if resp.status_code in (401, 403):
         raise GmailTokenError("Google rejected the Gmail connection. Connect Gmail again.")
     resp.raise_for_status()
@@ -32,7 +42,7 @@ def _fetch_one(session: requests.Session, headers: dict, message_id: str) -> Ema
     for attempt in range(4):
         resp = session.get(f"{BASE}/messages/{message_id}", params={"format": "full"}, headers=headers, timeout=20)
         # Gmail answers 429 (too many requests) or a 403 "rateLimitExceeded" when asked too fast: wait and retry.
-        throttled = resp.status_code == 429 or (resp.status_code == 403 and "ratelimit" in resp.text.lower()) or resp.status_code >= 500
+        throttled = _is_rate_limited(resp) or resp.status_code >= 500
         if not throttled:
             break
         time.sleep(1.5 * (attempt + 1))
