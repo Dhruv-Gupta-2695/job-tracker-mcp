@@ -95,6 +95,11 @@
         <label>Job description</label><textarea id="gJd"></textarea>
         <button id="gBtn">Generate</button>
         <p id="gMsg" class="muted"></p>
+        <div id="gSimilar" class="hidden card" style="background:#fff8e6;border-color:#f0d890">
+          <strong id="gSimTitle"></strong>
+          <p class="muted" id="gSimText"></p>
+          <div class="row"><button id="simCv" class="ghost">Download earlier CV</button><button id="simLetter" class="ghost">Download earlier letter</button><button id="simFresh">Generate a fresh one anyway</button></div>
+        </div>
         <div id="gOut" class="hidden">
           <div class="row"><button id="dlCv" class="ghost">Download CV (PDF)</button><button id="dlLetter" class="ghost">Download cover letter (PDF)</button></div>
           <p class="muted" id="gNote"></p>
@@ -232,7 +237,40 @@ const download = (b64s, name) => {
   a.href = URL.createObjectURL(new Blob([unb64(b64s)], { type: "application/pdf" }));
   a.download = name; a.click();
 };
-$("gBtn").onclick = async () => {
+let historyList = [];
+const norm = (t) => (t || "").toLowerCase().replace(/\s+/g, " ").trim();
+const wordSet = (t) => new Set(norm(t).slice(0, 1500).split(/[^a-z0-9+#.]+/).filter((w) => w.length > 2));
+function jdSimilarity(a, b) {
+  const x = wordSet(a), y = wordSet(b);
+  if (!x.size || !y.size) return 0;
+  let inter = 0; x.forEach((w) => { if (y.has(w)) inter++; });
+  return inter / (x.size + y.size - inter);
+}
+// Earlier generation for the same company and position, or a very similar job description.
+function findEarlier(company, position, jd) {
+  let best = null;
+  for (const h of historyList) {
+    let score = 0, why = "";
+    if (norm(h.company) === norm(company) && norm(h.position) === norm(position)) { score = 1; why = "same company and position"; }
+    else if (h.jdSnippet) { score = jdSimilarity(jd, h.jdSnippet); why = "very similar job description"; if (score < 0.6) score = 0; }
+    if (score && (!best || score > best.score)) best = { h, score, why };
+  }
+  return best;
+}
+$("simFresh").onclick = () => { $("gSimilar").classList.add("hidden"); runGenerate(); };
+$("gBtn").onclick = () => {
+  $("gSimilar").classList.add("hidden");
+  const company = $("gCompany").value.trim(), position = $("gPosition").value.trim(), jd = $("gJd").value;
+  const m = company && position && jd.trim() ? findEarlier(company, position, jd) : null;
+  if (!m) return runGenerate();
+  const when = m.h.createdAt?.toDate ? m.h.createdAt.toDate().toLocaleDateString() : "earlier";
+  $("gSimTitle").textContent = "You already made a CV for this one";
+  $("gSimText").textContent = `${m.h.company} - ${m.h.position} (${when}, ${m.why}). Reuse it, or generate a fresh one.`;
+  $("simCv").onclick = () => download(m.h.cvPdf, `CV - ${m.h.company} - ${m.h.position}.pdf`);
+  $("simLetter").onclick = () => download(m.h.letterPdf, `Cover Letter - ${m.h.company} - ${m.h.position}.pdf`);
+  $("gSimilar").classList.remove("hidden");
+};
+const runGenerate = async () => {
   if (!geminiKey) { $("gMsg").textContent = "Unlock your Gemini key in Setup first."; return; }
   if (!coreCv) { $("gMsg").textContent = "Save your CV first."; return; }
   const company = $("gCompany").value.trim(), position = $("gPosition").value.trim(), jd = $("gJd").value;
@@ -247,7 +285,7 @@ $("gBtn").onclick = async () => {
     $("gOut").classList.remove("hidden"); $("gMsg").textContent = "";
     await addDoc(collection(db, "users", auth.currentUser.uid, "generated"), {
       company, position, createdAt: serverTimestamp(), cvPdf: r.cv_pdf_b64, letterPdf: r.letter_pdf_b64,
-      cvText: r.cv_text, letterText: r.letter_text });
+      cvText: r.cv_text, letterText: r.letter_text, jdSnippet: jd.slice(0, 1500) });
     loadHistory();
   } catch (e) { $("gMsg").textContent = e.message; }
 };
@@ -255,10 +293,10 @@ $("dlCv").onclick = () => lastOut && download(lastOut.cv_pdf_b64, `CV - ${lastOu
 $("dlLetter").onclick = () => lastOut && download(lastOut.letter_pdf_b64, `Cover Letter - ${lastOut.company} - ${lastOut.position}.pdf`);
 async function loadHistory() {
   const snap = await getDocs(query(collection(db, "users", auth.currentUser.uid, "generated"), orderBy("createdAt", "desc"), limit(15)));
-  const box = $("hist"); box.textContent = "";
+  const box = $("hist"); box.textContent = ""; historyList = [];
   if (snap.empty) { box.textContent = "Nothing yet."; return; }
   snap.forEach((d) => {
-    const x = d.data(), row = document.createElement("div"); row.className = "hist";
+    const x = d.data(), row = document.createElement("div"); row.className = "hist"; historyList.push(x);
     const label = document.createElement("span"); label.textContent = `${x.company} - ${x.position}`;
     const btns = document.createElement("span");
     for (const [t, k] of [["CV", "cvPdf"], ["Letter", "letterPdf"]]) {
