@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Tracker</title>
+<style>
+  :root { --navy:#1f3a5f; --grey:#555; --line:#e3e6ea; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"Segoe UI",Roboto,sans-serif; color:#111; background:#f6f7f9; }
+  header { background:#fff; border-bottom:1px solid var(--line); padding:12px 20px; display:flex; align-items:center; justify-content:space-between; }
+  header h1 { font-size:18px; margin:0; color:var(--navy); }
+  main { max-width:960px; margin:24px auto; padding:0 16px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:16px; }
+  button { background:var(--navy); color:#fff; border:0; border-radius:8px; padding:9px 16px; font-size:14px; cursor:pointer; }
+  button.ghost { background:#fff; color:var(--navy); border:1px solid var(--navy); }
+  .muted { color:var(--grey); font-size:14px; }
+  .err { color:#b00020; font-size:14px; }
+  .center { text-align:center; padding:60px 20px; }
+  .row { display:flex; gap:10px; align-items:center; }
+  .badge { background:#eef2f7; border-radius:12px; padding:3px 10px; font-size:12px; color:var(--navy); }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Job Tracker</h1>
+  <div id="who" class="row hidden"><span id="whoName" class="muted"></span><button class="ghost" id="signOut">Sign out</button></div>
+</header>
+<main>
+  <div id="signedOut" class="card center hidden">
+    <h2>Track your job applications</h2>
+    <p class="muted">Sign in with Google. Your data is private to your account.</p>
+    <button id="signIn">Sign in with Google</button>
+    <p id="authErr" class="err"></p>
+  </div>
+
+  <div id="signedIn" class="hidden">
+    <div class="card">
+      <div class="row"><strong>Signed in</strong><span class="badge" id="uidBadge"></span></div>
+      <p class="muted" id="meInfo">Checking with the server...</p>
+    </div>
+    <div class="card">
+      <strong>Your workspace</strong>
+      <p class="muted">Dashboard, CV generator and Gmail scan arrive in the next milestones. This page proves that sign-in works and that your data space is separate from everyone else's.</p>
+      <div class="row"><button id="saveNote">Save a test note</button><span id="noteStatus" class="muted"></span></div>
+      <p class="muted" id="noteText"></p>
+    </div>
+  </div>
+</main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+  from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+// Web config is public by design: access is controlled by sign-in and firestore.rules.
+const firebaseConfig = {
+  apiKey: "AIzaSyCN43IEra5RpDXgASfYwTtdy8CCtbVAeoM",
+  authDomain: "job-tracker-820d3.firebaseapp.com",
+  projectId: "job-tracker-820d3",
+  storageBucket: "job-tracker-820d3.firebasestorage.app",
+  messagingSenderId: "1043405535011",
+  appId: "1:1043405535011:web:b00d7bdeee321151f93e96"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const $ = (id) => document.getElementById(id);
+
+// Authenticated call to this portal's server.
+window.apiFetch = async (path, opts = {}) => {
+  const token = await auth.currentUser.getIdToken();
+  const r = await fetch(path, { ...opts, headers: { ...(opts.headers || {}), Authorization: `Bearer ${token}` } });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `Server error ${r.status}`);
+  return r.json();
+};
+
+$("signIn").onclick = async () => {
+  $("authErr").textContent = "";
+  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+  catch (e) { $("authErr").textContent = e.code === "auth/unauthorized-domain"
+      ? "This website address is not allowed yet. Add it under Firebase > Authentication > Settings > Authorized domains."
+      : (e.message || "Sign-in failed."); }
+};
+$("signOut").onclick = () => signOut(auth);
+
+onAuthStateChanged(auth, async (user) => {
+  $("signedOut").classList.toggle("hidden", !!user);
+  $("signedIn").classList.toggle("hidden", !user);
+  $("who").classList.toggle("hidden", !user);
+  if (!user) return;
+  $("whoName").textContent = user.displayName || user.email;
+  $("uidBadge").textContent = "id " + user.uid.slice(0, 6) + "...";
+  try {
+    const me = await window.apiFetch("/api/me");
+    $("meInfo").textContent = `Server verified you as ${me.email}.`;
+  } catch (e) { $("meInfo").textContent = "Server check failed: " + e.message; }
+  try {
+    const snap = await getDoc(doc(db, "users", user.uid, "notes", "test"));
+    $("noteText").textContent = snap.exists() ? "Saved note: " + snap.data().text : "";
+  } catch (e) { $("noteText").textContent = "Could not read your data: " + e.message; }
+});
+
+$("saveNote").onclick = async () => {
+  const user = auth.currentUser;
+  try {
+    await setDoc(doc(db, "users", user.uid, "notes", "test"),
+      { text: "Hello from " + new Date().toLocaleString(), at: serverTimestamp() });
+    $("noteStatus").textContent = "Saved.";
+    $("noteText").textContent = "Saved note written to your private space.";
+  } catch (e) { $("noteStatus").textContent = "Failed: " + e.message; }
+};
+</script>
+</body>
+</html>
