@@ -28,7 +28,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt google-cloud-firestore
 
       - name: Write Google credentials from secrets
         run: |
@@ -38,7 +38,23 @@ jobs:
           GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
           GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
 
-      - name: Run scan
+      # Which scan runs is controlled by the repository variable USE_FIRESTORE
+      # (Settings > Secrets and variables > Actions > Variables).
+      #   not set / anything else: the original scan, writing to the Google Sheet
+      #   true: the new scan, writing to the portal's Firestore (rollback = unset the variable)
+      - name: Run scan (Firestore, new portal)
+        if: ${{ vars.USE_FIRESTORE == 'true' }}
+        run: python3 run_scan_firestore.py
+        env:
+          GMAIL_CREDENTIALS_PATH: ./credentials.json
+          GMAIL_TOKEN_PATH: ./token.json
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          FIREBASE_OWNER_UID: ${{ secrets.FIREBASE_OWNER_UID }}
+
+      - name: Run scan (original, Google Sheet)
+        if: ${{ vars.USE_FIRESTORE != 'true' }}
         run: python3 run_once.py
         env:
           GMAIL_CREDENTIALS_PATH: ./credentials.json

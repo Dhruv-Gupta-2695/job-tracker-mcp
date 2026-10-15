@@ -2,7 +2,7 @@
 
 A personal job-application tracker that runs at zero cost. It reads your Gmail, records each application in a Google Sheet, tells you about replies on Telegram, and has a small web portal for viewing applications, tailoring CVs with AI, and writing or sending replies.
 
-Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 6 (multi-user) is built; Phase 7 (installable app and notifications) is the current phase. Unscheduled ideas are listed under Future aspects.
+Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 6 (multi-user) is built; Phase 7 (installable app and notifications) is built; Phase 8 (one home for the owner's data) is the current phase. Unscheduled ideas are listed under Future aspects.
 
 ## Delivery phases
 
@@ -108,7 +108,7 @@ Open risks
 
 Exit check: a second person signs up, adds their key, connects Gmail, sees only their own applications and generates a CV, while the owner's data and key are untouched.
 
-### Phase 7: Installable app and notifications (current, branch `phase-7-pwa-notifications`)
+### Phase 7: Installable app and notifications (branch `phase-7-pwa-notifications`)
 Goal: users can install the multi-user portal as an app and get notified about changes found by a scan.
 
 Decisions (confirmed)
@@ -123,6 +123,28 @@ Built
 - Auto-scan when the app is opened or returns to the foreground and the last scan is over 30 minutes old. If the browser blocks Google's permission window (no tap), it falls back to a "Tap Scan" hint.
 
 Exit check: install the app on a phone and a laptop, turn on notifications, run a scan that finds a new application, and see the notification.
+
+### Phase 8: One home for the owner's data (current, branch `phase-8-unified-scan`)
+Goal: the owner uses the new portal as the only portal, while the scheduled scans and Telegram alerts keep working exactly as before.
+
+Decisions (confirmed)
+- Firestore becomes the single source of truth for the owner too. The Google Sheet stays only as an archive.
+- The owner's scheduled scan (GitHub Actions at 12:00 and 19:00 IST, triggered by cron-job.org) still reads Gmail with the existing token and still sends the same Telegram messages, but saves to the owner's account in Firestore instead of the Sheet.
+- Other users still get no scheduled scans and no Telegram (they get the installed app and scan-time notifications from Phase 7).
+- The old portal's extra features (reply writer and send, Run scan now, prompt editor) are rebuilt in the new portal in a later phase; the old portal is retired after the cut-over is verified.
+
+Built
+- `src/firestore_store.py`: owner-side access to `users/{uid}` using a Firebase service-account key held only in a GitHub secret (it bypasses the security rules, so it never goes on the web server).
+- `run_scan_firestore.py`: the scheduled scan. Same scan rules as the portal (`src/scan_core.py`), a Telegram message per status change, a summary every run, a reminder for applications still at `applied` after the configured days (no Gmail draft any more), and the expired-login alert.
+- `import_sheet_to_firestore.py`: one-time import of the Sheet's applications plus its processed-message ids and last scan time, so the first Firestore scan does not re-announce old mail. Preview by default, `--apply` to write.
+- `scan.yml` chooses the scan with the repository variable `USE_FIRESTORE`. Not set means the original Sheet scan; `true` means the new one. Rollback is unsetting the variable.
+
+Cut-over steps: add the secrets `FIREBASE_SERVICE_ACCOUNT_JSON` and `FIREBASE_OWNER_UID`; run the import (preview, then `--apply`); check the new portal shows the same applications; set `USE_FIRESTORE=true`; trigger one scan by hand and check Telegram and the portal; after a few days of normal scans, retire the old portal.
+
+Exit check: a scheduled scan runs with `USE_FIRESTORE=true`, a Telegram summary arrives, and new applications show up in the new portal.
+
+### Phase 9: Reply writer and send in the new portal (planned)
+Goal: the AI reply writer, Gmail drafts and guarded send, rebuilt for the multi-user portal with the same safeguards (server-chosen recipient, confirmation token, daily cap, cooldown, placeholder check). Needs the Gmail compose and send permission added to the consent screen and a clear consent step for users. Also folded in here: a scan button parity check and a prompt editor if still wanted.
 
 ### Future aspects (not scheduled)
 Ideas that are not part of any phase yet. Each is built only if it proves needed once the phase before it ships.
@@ -473,4 +495,4 @@ Two scans a day are a hard requirement (12:00 and 19:00 IST). GitHub's own `sche
 - Gemini free tier can return 503 under load; retries and the fallback model reduce but do not remove this.
 - The Reply button is enabled or disabled from the original confirmation's sender; the server makes the final decision from the latest message.
 
-**Planned, not built:** Phase 7 (current) and the Future aspects list, see above.
+**Planned, not built:** Phase 8 (current), Phase 9 and the Future aspects list, see above.
