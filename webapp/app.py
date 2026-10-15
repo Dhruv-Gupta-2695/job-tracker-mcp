@@ -35,6 +35,13 @@ from src import (  # noqa: E402
 app = FastAPI(title="Job Tracker")
 
 
+@app.on_event("startup")
+async def _limit_threads():
+    """Fewer worker threads = less memory on the 512 MB free tier."""
+    import anyio.to_thread
+    anyio.to_thread.current_default_thread_limiter().total_tokens = 4
+
+
 def _rss_mb() -> float:
     """Current resident memory of this process in MB (Linux; 0 elsewhere)."""
     try:

@@ -66,25 +66,39 @@ def get_credentials() -> Credentials:
     return creds
 
 
-# ---- Cached API clients -------------------------------------------------
-# build() parses a large API description each time it is called. Doing that on
-# every Sheets/Gmail/Drive call (dozens per page load) ballooned memory on
-# Render's 512 MB free tier. Build each client once per thread instead
-# (httplib2, which the clients use, is not thread-safe, so not shared across
-# threads). The cached client is dropped and rebuilt if its credentials are no
-# longer valid, so token refresh and GoogleAuthExpired behave as before.
-_local = threading.local()
+# ---- Shared API clients -------------------------------------------------
+# build() parses a large API description (~25 MB each). One client per name is
+# built for the whole process and shared by every thread. httplib2 is not
+# thread-safe, so all network calls go through one lock (_LockedHttp); with a
+# single user this serialisation is invisible, and memory stays flat on
+# Render's 512 MB free tier (a client per worker thread, plus per short-lived
+# thread, is what ran it out of memory). The client is rebuilt if its
+# credentials stop being valid, so token refresh and GoogleAuthExpired behave
+# as before.
+_services: dict = {}
+_services_lock = threading.Lock()
+_http_lock = threading.RLock()
+
+
+def _locked_http():
+    import httplib2
+
+    class _LockedHttp(httplib2.Http):
+        def request(self, *args, **kwargs):
+            with _http_lock:
+                return super().request(*args, **kwargs)
+
+    return _LockedHttp(timeout=60)
 
 
 def get_service(name: str, version: str):
+    from google_auth_httplib2 import AuthorizedHttp
     from googleapiclient.discovery import build
-    cache = getattr(_local, "services", None)
-    if cache is None:
-        cache = _local.services = {}
-    entry = cache.get((name, version))
-    if entry is not None and entry[1].valid:
-        return entry[0]
-    creds = get_credentials()
-    service = build(name, version, credentials=creds, cache_discovery=False)
-    cache[(name, version)] = (service, creds)
-    return service
+    with _services_lock:
+        entry = _services.get((name, version))
+        if entry is not None and entry[1].valid:
+            return entry[0]
+        creds = get_credentials()
+        service = build(name, version, http=AuthorizedHttp(creds, http=_locked_http()), cache_discovery=False)
+        _services[(name, version)] = (service, creds)
+        return service
