@@ -99,7 +99,6 @@
   </div>
 
   <div id="signedIn" class="hidden">
-    <div class="card row"><strong>Signed in</strong><span class="badge" id="uidBadge"></span><span class="muted" id="meInfo"></span></div>
     <nav>
       <button data-tab="apps" class="on">Applications</button>
       <button data-tab="setup">Setup</button>
@@ -846,9 +845,6 @@ onAuthStateChanged(auth, async (user) => {
   $("who").classList.toggle("hidden", !user);
   if (!user) return;
   $("whoName").textContent = user.displayName || user.email;
-  $("uidBadge").textContent = "id " + user.uid.slice(0, 6) + "...";
-  try { const me = await api("/api/me"); $("meInfo").textContent = `Server verified ${me.email}.`; }
-  catch (e) { $("meInfo").textContent = "Server check failed: " + e.message; }
   try { await refreshVault(); await loadCv(); await loadHistory(); await loadApps(); await loadReplySettings(); autoScanIfStale(); }
   catch (e) { $("vaultMsg").textContent = "Could not read your data: " + e.message; }
 });
