@@ -130,20 +130,21 @@
     <section id="tab-gen" class="hidden">
       <div class="card">
         <strong>Generate a tailored CV and cover letter</strong>
+        <p class="muted">Each button makes one Gemini call, so you only use quota for what you need.</p>
         <label>Company</label><input id="gCompany">
         <label>Position</label><input id="gPosition">
         <label>Job description</label><textarea id="gJd"></textarea>
-        <button id="gBtn">Generate</button>
+        <div class="row"><button id="gCvBtn">Generate CV</button><button id="gLetterBtn" class="ghost">Generate cover letter</button></div>
         <p id="gMsg" class="muted"></p>
         <div id="gSimilar" class="hidden card" style="background:#fff8e6;border-color:#f0d890">
           <strong id="gSimTitle"></strong>
           <p class="muted" id="gSimText"></p>
-          <div class="row"><button id="simCv" class="ghost">Download earlier CV</button><button id="simLetter" class="ghost">Download earlier letter</button><button id="simFresh">Generate a fresh one anyway</button></div>
+          <div class="row"><button id="simDl" class="ghost">Download earlier one</button><button id="simFresh">Generate a fresh one anyway</button></div>
         </div>
         <div id="gOut" class="hidden">
-          <div class="row"><button id="dlCv" class="ghost">Download CV (PDF)</button><button id="dlLetter" class="ghost">Download cover letter (PDF)</button></div>
+          <div class="row"><button id="dlCv" class="ghost hidden">Download CV (PDF)</button><button id="dlLetter" class="ghost hidden">Download cover letter (PDF)</button></div>
           <p class="muted" id="gNote"></p>
-          <pre id="gLetter"></pre>
+          <pre id="gLetter" class="hidden"></pre>
         </div>
       </div>
       <div class="card"><strong>Previous generations</strong><div id="hist" class="muted">Nothing yet.</div></div>
@@ -271,14 +272,14 @@ $("cvSave").onclick = async () => {
   } catch (e) { $("cvMsg").textContent = e.message; }
 };
 
-// ---------- generate ----------
-let lastOut = null;
+// ---------- generate (CV and cover letter are separate Gemini calls) ----------
 const download = (b64s, name) => {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([unb64(b64s)], { type: "application/pdf" }));
   a.download = name; a.click();
 };
-let historyList = [];
+let historyList = [];          // [{id, company, position, cvPdf?, letterPdf?, jd?, createdAt}]
+let shownOut = null;           // what the result area is showing
 const norm = (t) => (t || "").toLowerCase().replace(/\s+/g, " ").trim();
 const wordSet = (t) => new Set(norm(t).slice(0, 1500).split(/[^a-z0-9+#.]+/).filter((w) => w.length > 2));
 function jdSimilarity(a, b) {
@@ -287,67 +288,103 @@ function jdSimilarity(a, b) {
   let inter = 0; x.forEach((w) => { if (y.has(w)) inter++; });
   return inter / (x.size + y.size - inter);
 }
-// Earlier generation for the same company and position, or a very similar job description.
-function findEarlier(company, position, jd) {
+const fieldOf = (kind) => (kind === "cv" ? "cvPdf" : "letterPdf");
+const sameJob = (h, company, position) => norm(h.company) === norm(company) && norm(h.position) === norm(position);
+// An earlier entry of this kind for the same company and position, or a very similar job description.
+function findEarlier(kind, company, position, jd) {
   let best = null;
   for (const h of historyList) {
+    if (!h[fieldOf(kind)]) continue;
     let score = 0, why = "";
-    if (norm(h.company) === norm(company) && norm(h.position) === norm(position)) { score = 1; why = "same company and position"; }
-    else if (h.jdSnippet) { score = jdSimilarity(jd, h.jdSnippet); why = "very similar job description"; if (score < 0.6) score = 0; }
+    if (sameJob(h, company, position)) { score = 1; why = "same company and position"; }
+    else if (h.jd || h.jdSnippet) { score = jdSimilarity(jd, h.jd || h.jdSnippet); why = "very similar job description"; if (score < 0.6) score = 0; }
     if (score && (!best || score > best.score)) best = { h, score, why };
   }
   return best;
 }
-$("simFresh").onclick = () => { $("gSimilar").classList.add("hidden"); runGenerate(); };
-$("gBtn").onclick = () => {
-  $("gSimilar").classList.add("hidden");
-  const company = $("gCompany").value.trim(), position = $("gPosition").value.trim(), jd = $("gJd").value;
-  const m = company && position && jd.trim() ? findEarlier(company, position, jd) : null;
-  if (!m) return runGenerate();
-  const when = m.h.createdAt?.toDate ? m.h.createdAt.toDate().toLocaleDateString() : "earlier";
-  $("gSimTitle").textContent = "You already made a CV for this one";
-  $("gSimText").textContent = `${m.h.company} - ${m.h.position} (${when}, ${m.why}). Reuse it, or generate a fresh one.`;
-  $("simCv").onclick = () => download(m.h.cvPdf, `CV - ${m.h.company} - ${m.h.position}.pdf`);
-  $("simLetter").onclick = () => download(m.h.letterPdf, `Cover Letter - ${m.h.company} - ${m.h.position}.pdf`);
-  $("gSimilar").classList.remove("hidden");
-};
-const runGenerate = async () => {
+const label = (kind) => (kind === "cv" ? "CV" : "cover letter");
+
+function showOut(patch) {
+  shownOut = { ...(shownOut || {}), ...patch };
+  $("gOut").classList.remove("hidden");
+  $("dlCv").classList.toggle("hidden", !shownOut.cvPdf);
+  $("dlLetter").classList.toggle("hidden", !shownOut.letterPdf);
+  $("gLetter").classList.toggle("hidden", !shownOut.letterText);
+  if (shownOut.letterText) $("gLetter").textContent = shownOut.letterText;
+  $("gNote").textContent = shownOut.note || "";
+}
+$("dlCv").onclick = () => shownOut?.cvPdf && download(shownOut.cvPdf, `CV - ${shownOut.company} - ${shownOut.position}.pdf`);
+$("dlLetter").onclick = () => shownOut?.letterPdf && download(shownOut.letterPdf, `Cover Letter - ${shownOut.company} - ${shownOut.position}.pdf`);
+
+// Saves the result into the history entry for this company and position (created if new).
+async function saveResult(kind, job, r) {
+  const col = collection(db, "users", auth.currentUser.uid, "generated");
+  const existing = historyList.find((h) => sameJob(h, job.company, job.position));
+  const data = kind === "cv"
+    ? { cvPdf: r.cv_pdf_b64, cvText: r.cv_text }
+    : { letterPdf: r.letter_pdf_b64, letterText: r.letter_text };
+  if (existing) await updateDoc(doc(col, existing.id), { ...data, jd: job.jd.slice(0, 20000), updatedAt: serverTimestamp() });
+  else await addDoc(col, { company: job.company, position: job.position, ...data, jd: job.jd.slice(0, 20000), createdAt: serverTimestamp() });
+  await loadHistory();
+}
+
+async function runGenerate(kind, job) {
   if (!geminiKey) { $("gMsg").textContent = "Unlock your Gemini key in Setup first."; return; }
   if (!coreCv) { $("gMsg").textContent = "Save your CV first."; return; }
-  const company = $("gCompany").value.trim(), position = $("gPosition").value.trim(), jd = $("gJd").value;
-  if (!company || !position || !jd.trim()) { $("gMsg").textContent = "Fill in company, position and job description."; return; }
-  $("gMsg").textContent = "Generating (up to a minute)..."; $("gOut").classList.add("hidden");
+  $("gMsg").textContent = `Generating your ${label(kind)} (up to a minute)...`;
+  $("gCvBtn").disabled = $("gLetterBtn").disabled = true;
   try {
-    const r = await api("/api/generate", { method: "POST", needsKey: true, headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ core_struct: coreCv.struct, core_text: coreCv.text, company, position, job_description: jd }) });
-    lastOut = { company, position, ...r };
-    $("gLetter").textContent = r.letter_text;
-    $("gNote").textContent = `CV: ${r.cv_pages} page(s), ${r.cv_changes} wording change(s). Cover letter below.`;
-    $("gOut").classList.remove("hidden"); $("gMsg").textContent = "";
-    await addDoc(collection(db, "users", auth.currentUser.uid, "generated"), {
-      company, position, createdAt: serverTimestamp(), cvPdf: r.cv_pdf_b64, letterPdf: r.letter_pdf_b64,
-      cvText: r.cv_text, letterText: r.letter_text, jdSnippet: jd.slice(0, 1500) });
-    loadHistory();
+    const r = await api(kind === "cv" ? "/api/generate" : "/api/generate-letter", {
+      method: "POST", needsKey: true, headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ core_struct: coreCv.struct, core_text: coreCv.text, company: job.company, position: job.position, job_description: job.jd }) });
+    const sameShown = shownOut && sameJob(shownOut, job.company, job.position);
+    if (!sameShown) shownOut = null;
+    showOut(kind === "cv"
+      ? { company: job.company, position: job.position, cvPdf: r.cv_pdf_b64, note: `CV: ${r.cv_pages} page(s), ${r.cv_changes} wording change(s).` }
+      : { company: job.company, position: job.position, letterPdf: r.letter_pdf_b64, letterText: r.letter_text, note: shownOut?.note || "" });
+    $("gMsg").textContent = "";
+    await saveResult(kind, job, r);
   } catch (e) { $("gMsg").textContent = e.message; }
-};
-$("dlCv").onclick = () => lastOut && download(lastOut.cv_pdf_b64, `CV - ${lastOut.company} - ${lastOut.position}.pdf`);
-$("dlLetter").onclick = () => lastOut && download(lastOut.letter_pdf_b64, `Cover Letter - ${lastOut.company} - ${lastOut.position}.pdf`);
+  finally { $("gCvBtn").disabled = $("gLetterBtn").disabled = false; }
+}
+
+let pendingFresh = null;
+$("simFresh").onclick = () => { $("gSimilar").classList.add("hidden"); if (pendingFresh) runGenerate(pendingFresh.kind, pendingFresh.job); };
+function startGenerate(kind) {
+  $("gSimilar").classList.add("hidden");
+  const job = { company: $("gCompany").value.trim(), position: $("gPosition").value.trim(), jd: $("gJd").value };
+  if (!job.company || !job.position || !job.jd.trim()) { $("gMsg").textContent = "Fill in company, position and job description."; return; }
+  const m = findEarlier(kind, job.company, job.position, job.jd);
+  if (!m) return runGenerate(kind, job);
+  const when = m.h.createdAt?.toDate ? m.h.createdAt.toDate().toLocaleDateString() : "earlier";
+  pendingFresh = { kind, job };
+  $("gSimTitle").textContent = `You already made a ${label(kind)} for this one`;
+  $("gSimText").textContent = `${m.h.company} - ${m.h.position} (${when}, ${m.why}). Reuse it, or generate a fresh one.`;
+  $("simDl").onclick = () => download(m.h[fieldOf(kind)], `${kind === "cv" ? "CV" : "Cover Letter"} - ${m.h.company} - ${m.h.position}.pdf`);
+  $("gSimilar").classList.remove("hidden");
+}
+$("gCvBtn").onclick = () => startGenerate("cv");
+$("gLetterBtn").onclick = () => startGenerate("letter");
+
 async function loadHistory() {
-  const snap = await getDocs(query(collection(db, "users", auth.currentUser.uid, "generated"), orderBy("createdAt", "desc"), limit(15)));
+  const snap = await getDocs(query(collection(db, "users", auth.currentUser.uid, "generated"), orderBy("createdAt", "desc"), limit(25)));
   const box = $("hist"); box.textContent = ""; historyList = [];
   if (snap.empty) { box.textContent = "Nothing yet."; return; }
   snap.forEach((d) => {
-    const x = d.data(), row = document.createElement("div"); row.className = "hist"; historyList.push(x);
-    const label = document.createElement("span"); label.textContent = `${x.company} - ${x.position}`;
+    const x = { id: d.id, ...d.data() }; historyList.push(x);
+    const row = document.createElement("div"); row.className = "hist";
+    const name = document.createElement("span"); name.textContent = `${x.company} - ${x.position}`;
     const btns = document.createElement("span");
-    for (const [t, k] of [["CV", "cvPdf"], ["Letter", "letterPdf"]]) {
-      const b = document.createElement("button"); b.className = "ghost"; b.textContent = t; b.style.marginLeft = "6px";
-      b.onclick = () => download(x[k], `${t} - ${x.company} - ${x.position}.pdf`); btns.appendChild(b);
+    for (const kind of ["cv", "letter"]) {
+      const b = document.createElement("button"); b.className = "ghost"; b.style.marginLeft = "6px";
+      if (x[fieldOf(kind)]) { b.textContent = kind === "cv" ? "CV" : "Letter"; b.onclick = () => download(x[fieldOf(kind)], `${kind === "cv" ? "CV" : "Cover Letter"} - ${x.company} - ${x.position}.pdf`); }
+      else if (x.jd) { b.textContent = kind === "cv" ? "+ Add CV" : "+ Add letter"; b.onclick = () => runGenerate(kind, { company: x.company, position: x.position, jd: x.jd }); }
+      else continue;
+      btns.appendChild(b);
     }
-    row.append(label, btns); box.appendChild(row);
+    row.append(name, btns); box.appendChild(row);
   });
 }
-
 
 // ---------- applications: Gmail scan + dashboard ----------
 const GOOGLE_CLIENT_ID = "1043405535011-qnjs0cmuso9fofd31u7709l1hgioetkf.apps.googleusercontent.com";

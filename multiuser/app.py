@@ -89,7 +89,7 @@ def me(user: dict = Depends(current_user)):
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_JD_CHARS = 20000
 MAX_CV_CHARS = 30000
-_RATE = {"generate": (6, 3600), "cv": (10, 3600), "check": (10, 600), "scan": (12, 3600)}  # (calls, seconds) per user
+_RATE = {"generate": (6, 3600), "cv": (10, 3600), "check": (10, 600), "scan": (12, 3600), "letter": (10, 3600)}  # (calls, seconds) per user
 _hits: dict[tuple[str, str], list[float]] = {}
 
 
@@ -198,37 +198,50 @@ class GenerateRequest(BaseModel):
     job_description: str
 
 
-@app.post("/api/generate")
-def generate(req: GenerateRequest, user: dict = Depends(current_user), key: str = Depends(gemini_key)):
-    from src import ai_generate, cv_struct, pdf_export
-    rate_limit(user["uid"], "generate")
+def _check_generate_input(req: GenerateRequest) -> dict:
+    from src import cv_struct
     if len(req.job_description) > MAX_JD_CHARS or len(req.core_text) > MAX_CV_CHARS:
         raise HTTPException(status_code=400, detail="The job description or CV is too long.")
     try:
-        core = cv_struct.normalize(req.core_struct)
+        return cv_struct.normalize(req.core_struct)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Your saved CV structure is invalid. Upload your CV again.") from exc
+
+
+@app.post("/api/generate")
+def generate_cv(req: GenerateRequest, user: dict = Depends(current_user), key: str = Depends(gemini_key)):
+    """Tailored CV only (one Gemini call)."""
+    from src import ai_generate, cv_struct, pdf_export
+    rate_limit(user["uid"], "generate")
+    core = _check_generate_input(req)
     try:
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            cv_future = pool.submit(contextvars.copy_context().run, _with_key, key, ai_generate.tailor_cv_struct, core, req.job_description)
-            cl_future = pool.submit(contextvars.copy_context().run, _with_key, key, ai_generate.generate_cover_letter,
-                                    req.core_text, req.job_description, req.company, req.position)
-            final_cv, stats = cv_future.result()
-            letter_text = cl_future.result()
+        final_cv, stats = _run_with_key(key, ai_generate.tailor_cv_struct, core, req.job_description)
+    except (RuntimeError, ValueError) as exc:
+        raise _ai_error(exc) from exc
+    cv_pdf, cv_pages = pdf_export.cv_struct_to_pdf(final_cv)
+    return {
+        "cv_pdf_b64": base64.b64encode(cv_pdf).decode(), "cv_text": cv_struct.to_text(final_cv),
+        "cv_pages": cv_pages, "cv_changes": stats["changed"],
+    }
+
+
+@app.post("/api/generate-letter")
+def generate_letter(req: GenerateRequest, user: dict = Depends(current_user), key: str = Depends(gemini_key)):
+    """Cover letter only (one Gemini call)."""
+    from src import ai_generate, pdf_export
+    rate_limit(user["uid"], "letter")
+    core = _check_generate_input(req)
+    try:
+        letter_text = _run_with_key(key, ai_generate.generate_cover_letter, req.core_text, req.job_description, req.company, req.position)
     except (RuntimeError, ValueError) as exc:
         raise _ai_error(exc) from exc
     now = datetime.now(ZoneInfo("Asia/Kolkata"))
     date_str = f"{now.day} {now.strftime('%B %Y')}"
     contact = [c for c in core["contact"] if not any(w in (c.get("url", "") + c["text"]).lower() for w in ("github", "portfolio"))]
-    cv_pdf, cv_pages = pdf_export.cv_struct_to_pdf(final_cv)
     letter_pdf, _, paras = pdf_export.letter_to_pdf(core["name"], contact, letter_text, date_str)
     if not paras:
         raise HTTPException(status_code=400, detail="The AI returned an empty cover letter. Try again.")
-    return {
-        "cv_pdf_b64": base64.b64encode(cv_pdf).decode(), "letter_pdf_b64": base64.b64encode(letter_pdf).decode(),
-        "cv_text": cv_struct.to_text(final_cv), "letter_text": "\n\n".join(paras),
-        "cv_pages": cv_pages, "cv_changes": stats["changed"],
-    }
+    return {"letter_pdf_b64": base64.b64encode(letter_pdf).decode(), "letter_text": "\n\n".join(paras)}
 
 
 def _with_key(key: str, fn, *args):
