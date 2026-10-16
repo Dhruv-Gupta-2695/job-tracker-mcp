@@ -52,6 +52,26 @@
   .hero h1 { font-size:34px; margin:0 0 12px; line-height:1.15; }
   .hero .lead { color:var(--muted); max-width:480px; margin:0 0 22px; font-size:16px; line-height:1.5; }
   button.big { padding:12px 26px; font-size:16px; }
+  .flow { padding:4px 4px 0; }
+  .flow h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--accent); margin:0 0 12px; }
+  .flow ol { list-style:none; margin:0; padding:0; position:relative; }
+  .flow ol::before { content:""; position:absolute; left:13px; top:14px; bottom:14px; width:2px; background:linear-gradient(var(--accent), var(--accent-dim)); }
+  .flow li { display:flex; gap:14px; align-items:flex-start; position:relative; padding-bottom:16px; }
+  .flow li:last-child { padding-bottom:0; }
+  .flow .dot { flex:none; width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; box-shadow:0 0 0 4px var(--bg); position:relative; z-index:1; }
+  .flow h3 { margin:3px 0 3px; font-size:16px; }
+  .flow p { margin:0; color:var(--muted); font-size:14px; line-height:1.45; }
+  .guide .gwrap { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px; align-items:start; margin-top:10px; }
+  .guide .gvideo { background:var(--field); border:1px solid var(--border); border-radius:10px; overflow:hidden; aspect-ratio:16/9; }
+  .guide video { width:100%; height:100%; display:block; background:#000; }
+  .guide .gwrap.novideo { grid-template-columns:1fr; } .guide .gwrap.novideo .gvideo { display:none; }
+  .gsteps { margin:0 0 10px; padding-left:20px; line-height:1.6; font-size:14px; }
+  .gnote { margin:0 0 8px; font-size:13px; color:var(--muted); line-height:1.5; }
+  .btnlink { display:inline-block; margin-top:4px; background:var(--accent); color:#fff; padding:9px 16px; border-radius:6px; font-size:14px; font-weight:500; } .btnlink:hover { text-decoration:none; filter:brightness(1.1); }
+  @media (max-width:820px) { .guide .gwrap { grid-template-columns:1fr; } }
+  .betanote { font-size:12px; color:var(--muted); line-height:1.5; margin:12px 0 0; max-width:480px; }
+  .hero .betanote { margin-left:0; }
+  @media (max-width:820px) { .hero .betanote { margin-left:auto; margin-right:auto; } }
   .cars { display:flex; flex-direction:column; gap:14px; min-width:0; }
   .carousel { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px 18px 10px; min-width:0; }
   .viewport { overflow:hidden; }
@@ -63,7 +83,7 @@
   .slide .tag { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--accent); font-weight:700; }
   .slide .tag.why { color:var(--gold); }
   .slide .n { width:24px; height:24px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; background:var(--accent); color:#fff; font-weight:600; font-size:12px; }
-  .carousel[data-car="0"] { border-top:3px solid var(--accent); } .carousel[data-car="1"] { border-top:3px solid var(--gold); }
+  .carousel { border-top:3px solid var(--gold); }
   .cnav { display:flex; align-items:center; justify-content:space-between; margin-top:6px; }
   .dots { display:flex; gap:8px; }
   .dots i { width:8px; height:8px; border-radius:50%; background:var(--border); cursor:pointer; }
@@ -126,18 +146,19 @@
         <h1>Your job search, organised from your inbox</h1>
         <p class="lead">NextStep reads your application emails, keeps every company and status in one place, and helps you tailor your CV and reply to recruiters.</p>
         <button id="signIn" class="big">Sign in with Google</button>
+        <p class="betanote">NextStep is in open beta. When you connect Gmail, Google may show an &ldquo;unverified app&rdquo; screen. Choose <strong>Advanced</strong>, then <strong>Go to NextStep</strong> to continue.</p>
         <p id="authErr" class="err"></p>
       </section>
       <div class="cars">
-      <section class="carousel" data-car="0" aria-label="How it works">
-        <div class="viewport"><div class="track">
-          <article class="slide"><div class="top"><span class="tag">How it works</span><span class="n">1</span></div><h3>Connect Gmail</h3><p>Sign in, then allow read-only access to your inbox.</p></article>
-          <article class="slide"><div class="top"><span class="tag">How it works</span><span class="n">2</span></div><h3>We scan and sort</h3><p>Applications, interviews, offers and rejections are picked out and tracked for you.</p></article>
-          <article class="slide"><div class="top"><span class="tag">How it works</span><span class="n">3</span></div><h3>Tailor and reply</h3><p>Generate a CV and cover letter per job, and draft replies that you review before anything is sent.</p></article>
-        </div></div>
-        <div class="cnav"><button class="ghost small cprev" aria-label="Previous">&#8249;</button><div class="dots"></div><button class="ghost small cnext" aria-label="Next">&#8250;</button></div>
+      <section class="flow" aria-label="How it works">
+        <h2>How it works</h2>
+        <ol>
+          <li><span class="dot">1</span><div><h3>Connect Gmail</h3><p>Sign in, then allow read-only access to your inbox.</p></div></li>
+          <li><span class="dot">2</span><div><h3>We scan and sort</h3><p>Applications, interviews, offers and rejections are picked out and tracked for you.</p></div></li>
+          <li><span class="dot">3</span><div><h3>Tailor and reply</h3><p>Generate a CV and cover letter per job, and draft replies that you review before anything is sent.</p></div></li>
+        </ol>
       </section>
-      <section class="carousel" data-car="1" aria-label="Why Google sign-in only?">
+      <section class="carousel" data-car="0" aria-label="Why Google sign-in only?">
         <div class="viewport"><div class="track">
           <article class="slide"><div class="top"><span class="tag why">Why Google sign-in only?</span></div><h3>Your applications live in Gmail</h3><p>Confirmations, interview invites and rejections arrive in your inbox, so the account you sign in with is the one we read. There is nothing to import by hand.</p></article>
           <article class="slide"><div class="top"><span class="tag why">Why Google sign-in only?</span></div><h3>Read-only by default</h3><p>We can only read emails until you choose Allow replies later, and nothing is ever sent without you reviewing and confirming it.</p></article>
@@ -174,6 +195,7 @@
             <button id="scanBtn">Connect Gmail and scan</button>
           </div>
         </div>
+        <p class="muted betanote" id="betaGmail">First time connecting? Google may show an &ldquo;unverified app&rdquo; screen while NextStep is in beta. Choose <strong>Advanced</strong>, then <strong>Go to NextStep</strong>. You can remove access any time in your Google account.</p>
         <p class="muted" id="scanMsg"></p>
         <div class="toolbar">
           <input id="fSearch" placeholder="Search company or position...">
@@ -187,9 +209,25 @@
     </section>
 
     <section id="tab-setup" class="hidden">
+      <div class="card guide">
+        <strong>How to get your free Gemini key</strong>
+        <div class="gwrap">
+          <div class="gvideo" id="gVideoBox"><video id="gVideo" controls preload="metadata" playsinline><source src="/static/gemini-key-guide.mp4" type="video/mp4"></video></div>
+          <div>
+            <ol class="gsteps">
+              <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> and sign in with any Google account.</li>
+              <li>Click <strong>Create API key</strong> and choose a project (or let it create one).</li>
+              <li>Copy the key, then paste it into the box below.</li>
+            </ol>
+            <p class="gnote"><strong>Free:</strong> the Gemini free tier costs nothing and needs no card. It has daily limits, which is plenty for tailoring CVs and letters.</p>
+            <p class="gnote"><strong>Secure:</strong> your key is locked with your passphrase inside this browser before it is saved. It is sent only with your own requests, and we never store or log it.</p>
+            <a class="btnlink" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Open Google AI Studio</a>
+          </div>
+        </div>
+      </div>
       <div class="card">
         <strong>Your Gemini key</strong>
-        <p class="muted">Get a free key at aistudio.google.com (no card needed). It is encrypted in this browser with your passphrase before it is saved, so nobody else, including the site owner, can read it. Forget the passphrase and you just enter your key again.</p>
+        <p class="muted">Paste your key here. It is encrypted in this browser with your passphrase before it is saved, so nobody else, including the site owner, can read it. Forget the passphrase and you just enter your key again.</p>
         <div id="vaultNew" class="hidden">
           <label>Gemini API key</label><input id="keyIn" type="password" autocomplete="off" placeholder="AIza...">
           <label>Choose a passphrase (8+ characters)</label><input id="pass1" type="password" autocomplete="new-password">
@@ -910,6 +948,14 @@ document.querySelectorAll(".carousel").forEach((root, idx) => {
   root.addEventListener("mouseenter", () => clearInterval(timer)); root.addEventListener("mouseleave", restart);
   go(0); restart();
 });
+
+// hide the video box when no guide video has been added yet
+(() => { const v = document.querySelector("#gVideo source"), box = document.querySelector(".guide .gwrap");
+  v.addEventListener("error", () => box.classList.add("novideo")); })();
+
+// show the beta Gmail note only until the first scan has happened
+(() => { const n = document.getElementById("betaGmail"); if (!n) return;
+  const check = () => n.classList.toggle("hidden", !!(typeof metaScan !== "undefined" && metaScan.lastScanAt)); setInterval(check, 1500); check(); })();
 </script>
 </body>
 </html>

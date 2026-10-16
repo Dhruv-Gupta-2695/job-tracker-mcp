@@ -2,7 +2,7 @@
 
 A personal job-application tracker that runs at zero cost. It reads your Gmail, records each application in a Google Sheet, tells you about replies on Telegram, and has a small web portal for viewing applications, tailoring CVs with AI, and writing or sending replies.
 
-Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 6 (multi-user) is built; Phase 7 (installable app and notifications) is built; Phase 8 (one home for the owner's data) is built; Phase 9 (reply writer and send) is built and deployed. Unscheduled ideas are listed under Future aspects.
+Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 6 (multi-user) is built; Phase 7 (installable app and notifications) is built; Phase 8 (one home for the owner's data) is built; Phase 9 (reply writer and send) is built and deployed; Phase 10 (NextStep brand, portal UI and open beta access) is built. Unscheduled ideas are listed under Future aspects.
 
 ## Delivery phases
 
@@ -161,6 +161,17 @@ Built
 Not carried over from the old portal: the Telegram ping for every sent email (users have no Telegram), and the Sheet-based sent log.
 
 Exit check: allow replies, write a draft with AI for a real application thread, save it to Gmail drafts and see it threaded in Gmail; with sending enabled, send one reply and see it in Gmail; a second click does not send twice.
+
+### Phase 10: NextStep brand and portal UI (built, branch `phase-10-ui`)
+Goal: make the multi-user portal presentable to people who find it cold, and open sign-up beyond the owner.
+
+- Brand: the product is named NextStep ("Stay on top of every application."), with a logo, app icons and a colour scheme taken from the logo (blue, gold, dark navy) applied across the portal, with a light/dark switch.
+- Onboarding screen: two columns. Left: headline, pitch and Sign in with Google. Right: a "How it works" timeline and a "Why Google sign-in only?" carousel (applications live in Gmail, read-only by default, private to you). Includes a beta note about Google's unverified-app screen.
+- Applications tab restyled like the old portal: donut overview, status tiles with percentages, source filter, pagination, Reply hidden when not possible.
+- Setup tab: "How to get your free Gemini key" with steps, a recorded video (private details masked) and free-tier and security notes.
+- Access: the Google OAuth app is published to production but not verified, so anyone can connect Gmail, up to 100 new users, behind Google's "unverified app" warning. Full verification (CASA security assessment, annual) is a later decision.
+
+Exit check: a Google account that is not on the old test list can sign in, pass the unverified-app screen, scan, and add a Gemini key by following the guide.
 
 ### Future aspects (not scheduled)
 Ideas that are not part of any phase yet. Each is built only if it proves needed once the phase before it ships.
