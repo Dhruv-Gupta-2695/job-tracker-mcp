@@ -1,0 +1,7 @@
+# Caddy gets and renews free https certificates by itself.
+# To host another project on this server, copy a block like this one,
+# add a service for it in docker-compose.yml and point its name at it.
+{$NEXTSTEP_DOMAIN} {
+	encode gzip
+	reverse_proxy nextstep:8000
+}
