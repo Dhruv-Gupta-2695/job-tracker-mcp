@@ -3,30 +3,35 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Job Tracker</title>
+<title>NextStep</title>
 <script>try{document.documentElement.dataset.theme=localStorage.getItem("jt.theme")||"dark"}catch(e){document.documentElement.dataset.theme="dark"}</script>
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/static/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
 <meta name="theme-color" content="#171a21">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Job Tracker">
+<meta name="apple-mobile-web-app-title" content="NextStep">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
-  :root { --bg:#0f1115; --panel:#171a21; --border:#2a2f3a; --text:#e6e8ee; --muted:#9aa3b2; --accent:#5b8def; --accent-dim:#33507a;
-          --green:#4caf7d; --red:#e0685f; --yellow:#d9b34c; --field:#0c0e12; --tile-active:#1a2436; --warn-bg:#2b2616; --warn-border:#6b5a22; --overlay:rgba(0,0,0,.65); color-scheme:dark; }
-  [data-theme="light"] { --bg:#f6f7f9; --panel:#ffffff; --border:#e3e6ea; --text:#111418; --muted:#5a6272; --accent:#1f3a5f; --accent-dim:#9db2cf;
-          --green:#1e8a53; --red:#c4443b; --yellow:#a77d0e; --field:#f3f5f8; --tile-active:#e8eef7; --warn-bg:#fff8e6; --warn-border:#f0d890; --overlay:rgba(0,0,0,.45); color-scheme:light; }
+  :root { --bg:#0f1115; --panel:#171a21; --border:#2a2f3a; --text:#e6e8ee; --muted:#9aa3b2; --accent:#3d7be0; --accent-dim:#244a85; --gold:#d9b34c;
+          --green:#4caf7d; --red:#e0685f; --yellow:#d9b34c; --field:#0c0e12; --tile-active:#16264a; --warn-bg:#2b2616; --warn-border:#6b5a22; --overlay:rgba(0,0,0,.65); color-scheme:dark; }
+  [data-theme="light"] { --bg:#f3f6fb; --panel:#ffffff; --border:#dde4ef; --text:#111a2b; --muted:#566178; --accent:#215cb6; --accent-dim:#a9c1e6; --gold:#c49a2c;
+          --green:#1e8a53; --red:#c4443b; --yellow:#a77d0e; --field:#f3f5f8; --tile-active:#e4edfb; --warn-bg:#fff8e6; --warn-border:#f0d890; --overlay:rgba(0,0,0,.45); color-scheme:light; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
-  header { padding:18px 28px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
-  header h1 { font-size:18px; margin:0; font-weight:600; }
-  main { padding:24px 28px; max-width:1280px; margin:0 auto; }
+  header { padding:12px 28px; border-bottom:1px solid var(--border); box-shadow:inset 0 -2px 0 0 var(--accent-dim); display:flex; align-items:center; justify-content:space-between; }
+  header h1 { font-size:20px; margin:0; font-weight:800; line-height:1.1; letter-spacing:-.01em; }
+  header h1 span { color:var(--accent); }
+  .brand { display:flex; align-items:center; gap:10px; text-decoration:none; color:var(--text); }
+  .brand img { border-radius:8px; }
+  .brand small { display:block; color:var(--muted); font-size:11px; letter-spacing:.03em; margin-top:2px; }
+  @media (max-width:560px) { .brand small { display:none; } }
+  main { padding:14px 28px; max-width:1280px; margin:0 auto; }
   .card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:18px 20px; margin-bottom:16px; }
   .card h2 { font-size:14px; margin:0 0 12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
   nav { display:flex; gap:4px; border-bottom:1px solid var(--border); margin:0 0 20px; flex-wrap:wrap; }
   nav button { background:none; border:none; border-bottom:2px solid transparent; border-radius:0; color:var(--muted); padding:12px 16px; font-size:14px; }
-  nav button.on { color:var(--text); border-bottom-color:var(--accent); background:none; }
+  nav button.on { color:var(--text); border-bottom-color:var(--gold); background:none; }
   button { background:var(--accent); color:#fff; border:1px solid var(--accent); border-radius:6px; padding:9px 16px; font-size:14px; font-weight:500; cursor:pointer; font-family:inherit; }
   button:hover { filter:brightness(.92); }
   button:disabled { opacity:.5; cursor:not-allowed; }
@@ -41,6 +46,49 @@
   a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
   .muted { color:var(--muted); font-size:13px; }
   .err { color:var(--red); font-size:14px; } .ok { color:var(--green); font-size:14px; }
+  .onb { display:grid; grid-template-columns:1fr 1fr; gap:40px; align-items:center; min-height:calc(100vh - 170px); max-width:1100px; margin:0 auto; }
+  .hero { text-align:left; padding:8px 0; }
+  .herologo { border-radius:16px; margin-bottom:16px; }
+  .hero h1 { font-size:34px; margin:0 0 12px; line-height:1.15; }
+  .hero .lead { color:var(--muted); max-width:480px; margin:0 0 22px; font-size:16px; line-height:1.5; }
+  button.big { padding:12px 26px; font-size:16px; }
+  .flow { padding:4px 4px 0; }
+  .flow h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--accent); margin:0 0 12px; }
+  .flow ol { list-style:none; margin:0; padding:0; position:relative; }
+  .flow ol::before { content:""; position:absolute; left:13px; top:14px; bottom:14px; width:2px; background:linear-gradient(var(--accent), var(--accent-dim)); }
+  .flow li { display:flex; gap:14px; align-items:flex-start; position:relative; padding-bottom:16px; }
+  .flow li:last-child { padding-bottom:0; }
+  .flow .dot { flex:none; width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; box-shadow:0 0 0 4px var(--bg); position:relative; z-index:1; }
+  .flow h3 { margin:3px 0 3px; font-size:16px; }
+  .flow p { margin:0; color:var(--muted); font-size:14px; line-height:1.45; }
+  .guide .gwrap { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px; align-items:start; margin-top:10px; }
+  .guide .gvideo { background:var(--field); border:1px solid var(--border); border-radius:10px; overflow:hidden; aspect-ratio:16/9; }
+  .guide video { width:100%; height:100%; display:block; background:#000; }
+  .guide .gwrap.novideo { grid-template-columns:1fr; } .guide .gwrap.novideo .gvideo { display:none; }
+  .gsteps { margin:0 0 10px; padding-left:20px; line-height:1.6; font-size:14px; }
+  .gnote { margin:0 0 8px; font-size:13px; color:var(--muted); line-height:1.5; }
+  .btnlink { display:inline-block; margin-top:4px; background:var(--accent); color:#fff; padding:9px 16px; border-radius:6px; font-size:14px; font-weight:500; } .btnlink:hover { text-decoration:none; filter:brightness(1.1); }
+  @media (max-width:820px) { .guide .gwrap { grid-template-columns:1fr; } }
+  .betanote { font-size:12px; color:var(--muted); line-height:1.5; margin:12px 0 0; max-width:480px; }
+  .hero .betanote { margin-left:0; }
+  @media (max-width:820px) { .hero .betanote { margin-left:auto; margin-right:auto; } }
+  .cars { display:flex; flex-direction:column; gap:14px; min-width:0; }
+  .carousel { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:14px 18px 10px; min-width:0; }
+  .viewport { overflow:hidden; }
+  .track { display:flex; transition:transform .45s ease; }
+  .slide { flex:0 0 100%; min-width:0; box-sizing:border-box; padding:2px 2px 0; }
+  .slide .top { display:flex; align-items:center; justify-content:space-between; min-height:26px; }
+  .slide h3 { margin:6px 0 6px; font-size:18px; }
+  .slide p { margin:0; color:var(--muted); font-size:14px; line-height:1.5; min-height:63px; }
+  .slide .tag { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--accent); font-weight:700; }
+  .slide .tag.why { color:var(--gold); }
+  .slide .n { width:24px; height:24px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; background:var(--accent); color:#fff; font-weight:600; font-size:12px; }
+  .carousel { border-top:3px solid var(--gold); }
+  .cnav { display:flex; align-items:center; justify-content:space-between; margin-top:6px; }
+  .dots { display:flex; gap:8px; }
+  .dots i { width:8px; height:8px; border-radius:50%; background:var(--border); cursor:pointer; }
+  .dots i.on { background:var(--accent); width:22px; border-radius:6px; }
+  @media (max-width:820px) { .onb { grid-template-columns:1fr; gap:20px; min-height:0; } .hero { text-align:center; } .hero .lead { margin:0 auto 20px; } .hero h1 { font-size:28px; } }
   .center { text-align:center; padding:60px 20px; }
   .row { display:flex; gap:10px; align-items:center; }
   .badge { background:var(--field); border:1px solid var(--border); border-radius:12px; padding:3px 10px; font-size:12px; color:var(--muted); }
@@ -86,16 +134,40 @@
 </head>
 <body>
 <header>
-  <h1>Job Tracker</h1>
+  <a class="brand" href="/"><img src="/static/icons/icon-192.png" alt="" width="34" height="34"><span class="bn"><h1>Next<span>Step</span></h1><small>Stay on top of every application.</small></span></a>
   <div class="row"><button id="themeBtn" class="ghost small" title="Switch light / dark">Light</button>
     <div id="who" class="row hidden"><button id="installBtn" class="ghost small hidden">Install app</button><span id="whoName" class="muted"></span><button class="ghost small" id="signOut">Sign out</button></div></div>
 </header>
 <main>
-  <div id="signedOut" class="card center hidden">
-    <h2>Track your job applications</h2>
-    <p class="muted">Sign in with Google. Your data is private to your account.</p>
-    <button id="signIn">Sign in with Google</button>
-    <p id="authErr" class="err"></p>
+  <div id="signedOut" class="hidden">
+    <div class="onb">
+      <section class="hero">
+        <img class="herologo" src="/static/icons/icon-512.png" alt="NextStep" width="72" height="72">
+        <h1>Your job search, organised from your inbox</h1>
+        <p class="lead">NextStep reads your application emails, keeps every company and status in one place, and helps you tailor your CV and reply to recruiters.</p>
+        <button id="signIn" class="big">Sign in with Google</button>
+        <p class="betanote">NextStep is in open beta. When you connect Gmail, Google may show an &ldquo;unverified app&rdquo; screen. Choose <strong>Advanced</strong>, then <strong>Go to NextStep</strong> to continue.</p>
+        <p id="authErr" class="err"></p>
+      </section>
+      <div class="cars">
+      <section class="flow" aria-label="How it works">
+        <h2>How it works</h2>
+        <ol>
+          <li><span class="dot">1</span><div><h3>Connect Gmail</h3><p>Sign in, then allow read-only access to your inbox.</p></div></li>
+          <li><span class="dot">2</span><div><h3>We scan and sort</h3><p>Applications, interviews, offers and rejections are picked out and tracked for you.</p></div></li>
+          <li><span class="dot">3</span><div><h3>Tailor and reply</h3><p>Generate a CV and cover letter per job, and draft replies that you review before anything is sent.</p></div></li>
+        </ol>
+      </section>
+      <section class="carousel" data-car="0" aria-label="Why Google sign-in only?">
+        <div class="viewport"><div class="track">
+          <article class="slide"><div class="top"><span class="tag why">Why Google sign-in only?</span></div><h3>Your applications live in Gmail</h3><p>Confirmations, interview invites and rejections arrive in your inbox, so the account you sign in with is the one we read. There is nothing to import by hand.</p></article>
+          <article class="slide"><div class="top"><span class="tag why">Why Google sign-in only?</span></div><h3>Read-only by default</h3><p>We can only read emails until you choose Allow replies later, and nothing is ever sent without you reviewing and confirming it.</p></article>
+          <article class="slide"><div class="top"><span class="tag why">Why Google sign-in only?</span></div><h3>Private to you</h3><p>Your data is stored under your account only, and you can delete all of it at any time.</p></article>
+        </div></div>
+        <div class="cnav"><button class="ghost small cprev" aria-label="Previous">&#8249;</button><div class="dots"></div><button class="ghost small cnext" aria-label="Next">&#8250;</button></div>
+      </section>
+      </div>
+    </div>
   </div>
 
   <div id="signedIn" class="hidden">
@@ -123,6 +195,7 @@
             <button id="scanBtn">Connect Gmail and scan</button>
           </div>
         </div>
+        <p class="muted betanote" id="betaGmail">First time connecting? Google may show an &ldquo;unverified app&rdquo; screen while NextStep is in beta. Choose <strong>Advanced</strong>, then <strong>Go to NextStep</strong>. You can remove access any time in your Google account.</p>
         <p class="muted" id="scanMsg"></p>
         <div class="toolbar">
           <input id="fSearch" placeholder="Search company or position...">
@@ -136,9 +209,25 @@
     </section>
 
     <section id="tab-setup" class="hidden">
+      <div class="card guide">
+        <strong>How to get your free Gemini key</strong>
+        <div class="gwrap">
+          <div class="gvideo" id="gVideoBox"><video id="gVideo" controls preload="metadata" playsinline><source src="/static/gemini-key-guide.mp4" type="video/mp4"></video></div>
+          <div>
+            <ol class="gsteps">
+              <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> and sign in with any Google account.</li>
+              <li>Click <strong>Create API key</strong> and choose a project (or let it create one).</li>
+              <li>Copy the key, then paste it into the box below.</li>
+            </ol>
+            <p class="gnote"><strong>Free:</strong> the Gemini free tier costs nothing and needs no card. It has daily limits, which is plenty for tailoring CVs and letters.</p>
+            <p class="gnote"><strong>Secure:</strong> your key is locked with your passphrase inside this browser before it is saved. It is sent only with your own requests, and we never store or log it.</p>
+            <a class="btnlink" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Open Google AI Studio</a>
+          </div>
+        </div>
+      </div>
       <div class="card">
         <strong>Your Gemini key</strong>
-        <p class="muted">Get a free key at aistudio.google.com (no card needed). It is encrypted in this browser with your passphrase before it is saved, so nobody else, including the site owner, can read it. Forget the passphrase and you just enter your key again.</p>
+        <p class="muted">Paste your key here. It is encrypted in this browser with your passphrase before it is saved, so nobody else, including the site owner, can read it. Forget the passphrase and you just enter your key again.</p>
         <div id="vaultNew" class="hidden">
           <label>Gemini API key</label><input id="keyIn" type="password" autocomplete="off" placeholder="AIza...">
           <label>Choose a passphrase (8+ characters)</label><input id="pass1" type="password" autocomplete="new-password">
@@ -230,7 +319,7 @@
   </div>
   <p id="rmMsg" class="muted"></p>
 </div></div>
-<p class="muted" style="text-align:center;margin-top:24px"><a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></p>
+<p class="muted" style="text-align:center;margin-top:14px;margin-bottom:8px;font-size:13px"><a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></p>
 </main>
 
 <script type="module">
@@ -656,7 +745,7 @@ $("fSize").onchange = () => { view.pageSize = +$("fSize").value; view.page = 1; 
 $("pgPrev").onclick = () => { view.page--; renderTable(); }; $("pgNext").onclick = () => { view.page++; renderTable(); };
 syncControls();
 // light / dark switch (remembered in this browser)
-function paintTheme() { const t = document.documentElement.dataset.theme; $("themeBtn").textContent = t === "light" ? "Dark" : "Light"; document.querySelector('meta[name="theme-color"]').content = t === "light" ? "#f6f7f9" : "#171a21"; }
+function paintTheme() { const t = document.documentElement.dataset.theme; $("themeBtn").textContent = t === "light" ? "Dark" : "Light"; document.querySelector('meta[name="theme-color"]').content = t === "light" ? "#f3f6fb" : "#171a21"; }
 $("themeBtn").onclick = () => { const t = document.documentElement.dataset.theme === "light" ? "dark" : "light"; document.documentElement.dataset.theme = t; try { localStorage.setItem("jt.theme", t); } catch {} paintTheme(); };
 paintTheme();
 
@@ -798,7 +887,7 @@ async function notifyScan(newApps, updatedApps) {
   if (!parts.length) return;
   const reg = swReg || (await navigator.serviceWorker?.ready);
   const opts = { body: parts.join(", "), icon: "/static/icons/icon-192.png", badge: "/static/icons/icon-192.png", tag: "scan" };
-  if (reg?.showNotification) reg.showNotification("Job Tracker", opts); else new Notification("Job Tracker", opts);
+  if (reg?.showNotification) reg.showNotification("NextStep", opts); else new Notification("NextStep", opts);
 }
 notifState();
 
@@ -848,6 +937,25 @@ onAuthStateChanged(auth, async (user) => {
   try { await refreshVault(); await loadCv(); await loadHistory(); await loadApps(); await loadReplySettings(); autoScanIfStale(); }
   catch (e) { $("vaultMsg").textContent = "Could not read your data: " + e.message; }
 });
+
+// onboarding carousels (two separate ones: how it works / why Google sign-in)
+document.querySelectorAll(".carousel").forEach((root, idx) => {
+  const track = root.querySelector(".track"), dots = root.querySelector(".dots"), n = track.children.length; let i = 0, timer = null;
+  for (let k = 0; k < n; k++) { const d = document.createElement("i"); d.onclick = () => { go(k); restart(); }; dots.appendChild(d); }
+  function go(k) { i = (k + n) % n; track.style.transform = `translateX(-${i * 100}%)`; [...dots.children].forEach((d, j) => d.classList.toggle("on", j === i)); }
+  function restart() { clearInterval(timer); timer = setInterval(() => { if (!$("signedOut").classList.contains("hidden")) go(i + 1); }, 5000 + idx * 1500); }
+  root.querySelector(".cprev").onclick = () => { go(i - 1); restart(); }; root.querySelector(".cnext").onclick = () => { go(i + 1); restart(); };
+  root.addEventListener("mouseenter", () => clearInterval(timer)); root.addEventListener("mouseleave", restart);
+  go(0); restart();
+});
+
+// hide the video box when no guide video has been added yet
+(() => { const v = document.querySelector("#gVideo source"), box = document.querySelector(".guide .gwrap");
+  v.addEventListener("error", () => box.classList.add("novideo")); })();
+
+// show the beta Gmail note only until the first scan has happened
+(() => { const n = document.getElementById("betaGmail"); if (!n) return;
+  const check = () => n.classList.toggle("hidden", !!(typeof metaScan !== "undefined" && metaScan.lastScanAt)); setInterval(check, 1500); check(); })();
 </script>
 </body>
 </html>
