@@ -5,3 +5,9 @@
 	encode gzip
 	reverse_proxy nextstep:8000
 }
+
+# Market Analyst (Streamlit UI). Websockets work through reverse_proxy by default.
+{$MARKET_DOMAIN} {
+	encode gzip
+	reverse_proxy marketanalyst:8501
+}

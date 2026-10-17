@@ -33,5 +33,11 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env restart nexts
 - Google Cloud console > APIs & Services > Credentials > your OAuth client: add `https://YOUR-NAME.duckdns.org` as an authorized JavaScript origin.
 - OAuth consent screen: update the Privacy and Terms links to the new address.
 
+## Market Analyst (Streamlit UI)
+The UI runs here (never sleeps); the heavy FastAPI backend stays on Render and is kept awake by a cron-job.org ping to its `/health`.
+- Create a second DuckDNS name pointing at this server and set `MARKET_DOMAIN` and `MARKET_BACKEND_URL` in `deploy/.env`.
+- The image is built from the public `market_analyst` repo on GitHub (branch `main`), so the UI change that avoids importing yfinance/LLM libraries must be merged there first.
+- Memory: the UI container is capped at 350 MB. If `docker stats` shows it near the cap, either trim it further or upgrade the droplet.
+
 ## Adding another project later
 Add a service to `docker-compose.yml`, a block to `Caddyfile` with its own DuckDNS name, and an `mem_limit` so one app cannot starve the others.
