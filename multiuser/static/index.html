@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>NextStep</title>
 <script>try{document.documentElement.dataset.theme=localStorage.getItem("jt.theme")||"dark"}catch(e){document.documentElement.dataset.theme="dark"}</script>
 <link rel="manifest" href="/manifest.json">
@@ -11,6 +11,8 @@
 <meta name="theme-color" content="#171a21">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="NextStep">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root { --bg:#0f1115; --panel:#171a21; --border:#2a2f3a; --text:#e6e8ee; --muted:#9aa3b2; --accent:#3d7be0; --accent-dim:#244a85; --gold:#d9b34c;
@@ -130,6 +132,49 @@
   .confirm { border:2px solid var(--warn-border); background:var(--warn-bg); border-radius:10px; padding:12px; margin-top:12px; }
   #similar, #gSimilar { background:var(--warn-bg) !important; border-color:var(--warn-border) !important; }
   #themeBtn { padding:6px 10px; }
+  html { -webkit-text-size-adjust:100%; }
+  body { overflow-x:hidden; }
+  input, textarea, select { font-size:16px; }   /* stops iOS zooming into fields */
+  select { font-size:14px; }
+  /* phones */
+  @media (max-width:640px) {
+    header { padding:10px 14px; gap:8px; flex-wrap:wrap; }
+    header h1 { font-size:18px; white-space:nowrap; }
+    .brand img { width:30px; height:30px; }
+    header .row { gap:6px; flex-wrap:wrap; margin-left:auto; }
+    header .row .row { flex-wrap:nowrap; }
+    #whoName { display:none; }
+    button.small { padding:6px 10px; }
+    main { padding:12px 14px; }
+    nav { flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; margin-bottom:14px; }
+    nav::-webkit-scrollbar { display:none; }
+    nav button { padding:10px 12px; white-space:nowrap; flex:none; }
+    .card { padding:14px; }
+    .dash { gap:14px; justify-content:center; }
+    .donut { width:140px; height:140px; }
+    .tiles { grid-template-columns:repeat(2,minmax(0,1fr)); min-width:0; width:100%; }
+    .ranges button { flex:1 1 auto; }
+    .toolbar { flex-direction:column; align-items:stretch; }
+    .toolbar input, .toolbar select { width:100%; min-width:0; }
+    .scanbar { flex-direction:column; align-items:stretch; width:100%; gap:8px; margin-top:8px; }
+    .scanbar select, .scanbar button { width:100%; }
+    .donut { margin:0 auto; }
+    /* application rows become cards */
+    table, tbody { display:block; width:100%; }
+    thead { display:none; }
+    tr { display:grid; grid-template-columns:1fr auto; gap:4px 10px; padding:12px 2px; border-bottom:1px solid var(--border); }
+    td { border:0; padding:0; text-align:left; min-width:0; overflow-wrap:anywhere; }
+    td:nth-child(1) { grid-column:1; font-weight:600; font-size:14px; }
+    td:nth-child(3) { grid-column:2; grid-row:1; justify-self:end; }
+    td:nth-child(2) { grid-column:1 / -1; color:var(--muted); }
+    td:nth-child(4), td:nth-child(5) { grid-column:1 / -1; font-size:12px; color:var(--muted); }
+    td:nth-child(4) { grid-row:4; }
+    td:nth-child(5) { grid-row:5; }
+    td.acts { grid-column:1 / -1; grid-row:6; margin-top:4px; display:flex; align-items:center; gap:10px; }
+    td.acts button { margin-left:0 !important; }
+    .pager { justify-content:center; }
+    .modal { padding:12px 8px; }
+  }
 </style>
 </head>
 <body>
@@ -189,7 +234,7 @@
       <div class="card">
         <div class="row" style="justify-content:space-between;flex-wrap:wrap;margin-bottom:6px">
           <h2 style="margin:0">Applications</h2>
-          <div class="row">
+          <div class="row scanbar">
             <span class="muted" id="scanInfo">Not scanned yet.</span>
             <select id="scanDays" title="How far back the first scan looks"><option value="30">First scan: 30 days</option><option value="60" selected>First scan: 60 days</option><option value="120">First scan: 120 days</option></select>
             <button id="scanBtn">Connect Gmail and scan</button>
@@ -867,7 +912,14 @@ let swReg = null, installEvent = null;
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").then((r) => { swReg = r; }).catch(() => {});
 window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvent = e; $("installBtn").classList.remove("hidden"); });
 window.addEventListener("appinstalled", () => $("installBtn").classList.add("hidden"));
-$("installBtn").onclick = async () => { if (!installEvent) return; installEvent.prompt(); await installEvent.userChoice; installEvent = null; $("installBtn").classList.add("hidden"); };
+// iPhone/iPad never fire beforeinstallprompt: show a button that explains Add to Home Screen instead
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isStandalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+if (isIOS && !isStandalone) $("installBtn").classList.remove("hidden");
+$("installBtn").onclick = async () => {
+  if (isIOS && !installEvent) { alert("To install NextStep on your iPhone:\n\n1. Tap the Share button (square with an arrow) in Safari or Chrome.\n2. Scroll down and tap \"Add to Home Screen\".\n3. Tap Add."); return; }
+  if (!installEvent) return; installEvent.prompt(); await installEvent.userChoice; installEvent = null; $("installBtn").classList.add("hidden");
+};
 
 function notifState() {
   if (!("Notification" in window)) { $("notifState").textContent = "This browser does not support notifications."; $("notifBtn").classList.add("hidden"); return; }
