@@ -1,0 +1,15 @@
+.git
+.github
+__pycache__
+*.pyc
+venv
+.env
+credentials.json
+token.json
+state.json
+job_applications.xlsx
+daemon.log
+*recovery_code*
+webapp
+Job_Tracker_Strategy_Review.*
+*.md
