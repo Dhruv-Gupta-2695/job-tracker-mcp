@@ -18,6 +18,29 @@ services:
       timeout: 5s
       retries: 3
 
+  marketanalyst:
+    # Streamlit UI only. The heavy FastAPI backend stays on Render (BACKEND_URL below).
+    # Built straight from the public market_analyst repo; the image installs just what the UI needs.
+    build:
+      context: https://github.com/Dhruv-Gupta-2695/market_analyst.git#main
+      dockerfile_inline: |
+        FROM python:3.11-slim
+        ENV PYTHONUNBUFFERED=1
+        WORKDIR /app
+        RUN pip install --no-cache-dir streamlit pandas httpx pydantic-settings
+        COPY backend/app ./backend/app
+        COPY frontend ./frontend
+        RUN useradd --create-home app && chown -R app /app
+        USER app
+        EXPOSE 8501
+        CMD ["streamlit", "run", "frontend/streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true", "--browser.gatherUsageStats=false"]
+    restart: unless-stopped
+    environment:
+      - BACKEND_URL=${MARKET_BACKEND_URL}
+    expose:
+      - "8501"
+    mem_limit: 350m
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -30,8 +53,10 @@ services:
       - caddy_config:/config
     environment:
       - NEXTSTEP_DOMAIN=${NEXTSTEP_DOMAIN}
+      - MARKET_DOMAIN=${MARKET_DOMAIN}
     depends_on:
       - nextstep
+      - marketanalyst
     mem_limit: 100m
 
 volumes:
