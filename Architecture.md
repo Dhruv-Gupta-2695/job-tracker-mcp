@@ -2,7 +2,7 @@
 
 A personal job-application tracker that runs at zero cost. It reads your Gmail, records each application in a Google Sheet, tells you about replies on Telegram, and has a small web portal for viewing applications, tailoring CVs with AI, and writing or sending replies.
 
-Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 6 (multi-user) is built; Phase 7 (installable app and notifications) is built; Phase 8 (one home for the owner's data) is built; Phase 9 (reply writer and send) is built and deployed; Phase 10 (NextStep brand, portal UI and open beta access) is built. Unscheduled ideas are listed under Future aspects.
+Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 6 (multi-user) is built; Phase 7 (installable app and notifications) is built; Phase 8 (one home for the owner's data) is built; Phase 9 (reply writer and send) is built and deployed; Phase 10 (NextStep brand, portal UI and open beta access) is built; Phase 11 (always-on hosting) is built and deployed; Phase 12 (Market Analyst split) is built and deployed; Phase 13 (mobile layout) is built and deployed. Unscheduled ideas are listed under Future aspects.
 
 ## Delivery phases
 
@@ -172,6 +172,35 @@ Goal: make the multi-user portal presentable to people who find it cold, and ope
 - Access: the Google OAuth app is published to production but not verified, so anyone can connect Gmail, up to 100 new users, behind Google's "unverified app" warning. Full verification (CASA security assessment, annual) is a later decision.
 
 Exit check: a Google account that is not on the old test list can sign in, pass the unverified-app screen, scan, and add a Gemini key by following the guide.
+
+### Phase 11: always-on hosting (built, branch `phase-11-hosting`)
+Goal: NextStep never sleeps, at a cost of $6 a month or less, with room for other small apps.
+
+- Host: one DigitalOcean droplet (1 GiB RAM, 1 vCPU, Bangalore, Ubuntu 24.04) with 1 GB swap, firewall open on 22, 80 and 443 only, and automatic security updates. Cost: $6 a month.
+- Packaging: the portal runs as a Docker container (`Dockerfile`, non-root user, uvicorn behind a proxy). Docker Compose in `deploy/` starts the portal and Caddy, which serves automatic https and forwards to the portal. Memory limits keep the machine stable (portal 600 MB, Caddy 100 MB).
+- Address: free DuckDNS names pointing at the droplet (`nextstepapp.duckdns.org`); no domain is bought. Firebase and Google sign-in settings use this address, and the privacy and terms pages are served from it.
+- Updating: `git pull`, then rebuild and restart with Compose (see `deploy/README.md`). Secrets live only in `deploy/.env` on the server and are never committed.
+- The old Render services for the portal are suspended once the droplet is stable; this also frees Render's free hours for the Market Analyst backend.
+
+Exit check: the site opens over https from a phone, sign-in works, and it is still fast after a day idle.
+
+### Phase 12: Market Analyst split (built, branch `phase-12-market-analyst`)
+Goal: keep the Market Analyst usable without letting its screen go to sleep.
+
+- Backend (LangGraph agents, FastAPI) stays on Render's free tier. A cron-job.org request to `/health` every 10 minutes keeps it awake. One always-awake free service uses about 720 of Render's 750 free hours a month, which is why the other free services are suspended.
+- Frontend (Streamlit) moves to the droplet as a third container. It is a slim image built from the public repository: the stock-name map is a dependency-free module so the screen does not load yfinance or the AI client. It calls the Render backend through `BACKEND_URL`. Caddy serves it at `marketanalyst.duckdns.org`. It uses about 75 MiB of memory.
+- Request timeout in the screen is 240 seconds, because one analysis makes several AI calls behind a 5 requests per minute limiter.
+- Known limit: Google's Gemini free models sometimes answer "503 high demand"; the app shows a partial answer with the error rather than failing silently.
+
+Exit check: an analysis for a listed stock returns a verdict from the droplet address.
+
+### Phase 13: mobile layout (built, branch `phase-13-mobile-ui`)
+Goal: NextStep reads well on a phone (checked for iPhone 14 width).
+
+- Under 640 px: a compact header, tabs that scroll sideways, a stacked scan bar, two-column status tiles, and application rows shown as cards instead of a wide table. Form fields use 16 px text so iOS does not zoom.
+- Install: Android and desktop Chrome show the browser install prompt through the "Install app" button. iPhones do not support that prompt, so the same button shows Add to Home Screen steps.
+
+Exit check: no sideways scrolling on a phone, and the app installs from the iPhone home screen.
 
 ### Future aspects (not scheduled)
 Ideas that are not part of any phase yet. Each is built only if it proves needed once the phase before it ships.
