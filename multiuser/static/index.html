@@ -132,6 +132,52 @@
   .confirm { border:2px solid var(--warn-border); background:var(--warn-bg); border-radius:10px; padding:12px; margin-top:12px; }
   #similar, #gSimilar { background:var(--warn-bg) !important; border-color:var(--warn-border) !important; }
   #themeBtn { padding:6px 10px; }
+  /* overview tiles: number and percent on one line, label underneath, nothing overflows */
+  .tiles { grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); }
+  button.tile { min-width:0; display:flex; flex-direction:column; gap:4px; }
+  .tile .top { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+  .tile .lbl { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .tile .pct { margin-left:0; }
+  .tile.new { border-color:var(--gold); }
+  .tile.new .num { color:var(--gold); }
+  /* calls to action */
+  .cta { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:40px; padding:9px 20px; border-radius:8px; font-size:14px; font-weight:700; letter-spacing:.01em; cursor:pointer; font-family:inherit; text-decoration:none; white-space:nowrap; }
+  .cta:hover { text-decoration:none; filter:brightness(1.08); }
+  .cta-mail { background:transparent; color:var(--accent); border:2px solid var(--accent); }
+  .cta-reply { background:var(--gold); color:#1a1405; border:2px solid var(--gold); }
+  .ctas { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; } .ctas .cta { flex:1 1 140px; }
+  .acts { display:flex; gap:8px; align-items:center; }
+  /* modal email view */
+  .mailview { white-space:pre-wrap; background:var(--field); border:1px solid var(--border); border-radius:8px; padding:12px; margin-top:12px; max-height:52vh; overflow:auto; font-size:14px; line-height:1.5; overflow-wrap:anywhere; }
+  .flag { background:var(--warn-bg); border:1px solid var(--warn-border); border-radius:6px; padding:6px 10px; margin:10px 0 0; }
+  /* update banner and highlighted rows */
+  .banner { background:var(--warn-bg); border:1px solid var(--gold); border-left-width:6px; border-radius:10px; padding:14px 16px; margin-bottom:16px; }
+  .banner .bt { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; font-weight:700; font-size:15px; }
+  .banner ul { list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; gap:6px; }
+  .banner li { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:14px; }
+  .banner li button { margin-left:auto; }
+  tr.unseen td:first-child { box-shadow:inset 4px 0 0 var(--gold); padding-left:14px; }
+  tr.unseen { background:color-mix(in srgb, var(--gold) 9%, transparent); }
+  .newb { display:inline-block; background:var(--gold); color:#1a1405; border-radius:10px; font-size:10px; font-weight:800; letter-spacing:.05em; padding:1px 7px; margin-left:8px; vertical-align:middle; text-transform:uppercase; }
+  .more { text-align:center; padding:12px 0; } .more button { width:100%; }
+  /* resume builder */
+  .stepper { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .stp { display:flex; align-items:center; gap:8px; padding:6px 12px; border:1px solid var(--border); border-radius:20px; font-size:13px; color:var(--muted); background:var(--panel); }
+  .stp i { font-style:normal; width:20px; height:20px; border-radius:50%; background:var(--border); color:var(--text); display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; }
+  .stp.done { color:var(--text); border-color:var(--green); } .stp.done i { background:var(--green); color:#fff; }
+  details.step { margin-bottom:16px; }
+  details.step > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:12px; padding:12px 14px; background:var(--panel); border:1px solid var(--border); border-top:3px solid var(--gold); border-radius:10px; margin-bottom:10px; font-weight:700; }
+  details.step > summary::-webkit-details-marker { display:none; }
+  details.step > summary::after { content:"\25BE"; margin-left:auto; color:var(--muted); transition:transform .2s; }
+  details.step:not([open]) > summary::after { transform:rotate(-90deg); }
+  .sn { width:26px; height:26px; border-radius:50%; background:var(--accent); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:13px; flex:none; }
+  .sdone { font-weight:600; font-size:12px; color:var(--green); }
+  h2.sect { font-size:14px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:26px 0 10px; }
+  /* tour */
+  .tourbox { max-width:560px; }
+  .tourstep { min-height:150px; padding:10px 2px 4px; } .tourstep .tn { color:var(--gold); font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+  .tourstep h3 { margin:6px 0 8px; font-size:20px; } .tourstep p { margin:0 0 8px; color:var(--muted); line-height:1.55; font-size:14px; }
+  .tourstep ul { margin:0; padding-left:18px; color:var(--muted); line-height:1.6; font-size:14px; }
   html { -webkit-text-size-adjust:100%; }
   body { overflow-x:hidden; }
   input, textarea, select { font-size:16px; }   /* stops iOS zooming into fields */
@@ -170,9 +216,11 @@
     td:nth-child(4), td:nth-child(5) { grid-column:1 / -1; font-size:12px; color:var(--muted); }
     td:nth-child(4) { grid-row:4; }
     td:nth-child(5) { grid-row:5; }
-    td.acts { grid-column:1 / -1; grid-row:6; margin-top:4px; display:flex; align-items:center; gap:10px; }
-    td.acts button { margin-left:0 !important; }
-    .pager { justify-content:center; }
+    td.acts { grid-column:1 / -1; grid-row:6; margin-top:6px; display:flex; align-items:center; gap:10px; }
+    td.acts .cta { flex:1; }
+    tr.unseen { padding-left:10px; border-left:4px solid var(--gold); } tr.unseen td:first-child { box-shadow:none; padding-left:0; }
+    .pager { display:none; }
+    .banner li button { margin-left:0; width:100%; }
     .modal { padding:12px 8px; }
   }
 </style>
@@ -180,7 +228,7 @@
 <body>
 <header>
   <a class="brand" href="/"><img src="/static/icons/icon-192.png" alt="" width="34" height="34"><span class="bn"><h1>Next<span>Step</span></h1><small>Stay on top of every application.</small></span></a>
-  <div class="row"><button id="themeBtn" class="ghost small" title="Switch light / dark">Light</button>
+  <div class="row"><button id="tourBtn" class="ghost small hidden" title="A short walkthrough of NextStep">How to use</button><button id="themeBtn" class="ghost small" title="Switch light / dark">Light</button>
     <div id="who" class="row hidden"><button id="installBtn" class="ghost small hidden">Install app</button><span id="whoName" class="muted"></span><button class="ghost small" id="signOut">Sign out</button></div></div>
 </header>
 <main>
@@ -218,12 +266,11 @@
   <div id="signedIn" class="hidden">
     <nav>
       <button data-tab="apps" class="on">Applications</button>
-      <button data-tab="setup">Setup</button>
-      <button data-tab="cv">Your CV</button>
-      <button data-tab="gen">Generate</button>
+      <button data-tab="resume">Resume builder</button>
     </nav>
 
     <section id="tab-apps">
+      <div id="updBanner" class="banner hidden"></div>
       <div class="card">
         <h2>Overview</h2>
         <div class="ranges" id="ranges">
@@ -231,12 +278,12 @@
         </div>
         <div class="dash"><svg class="donut" id="donut" viewBox="0 0 42 42"></svg><div class="tiles" id="tiles"></div></div>
       </div>
-      <div class="card">
+      <div class="card" id="listCard">
         <div class="row" style="justify-content:space-between;flex-wrap:wrap;margin-bottom:6px">
           <h2 style="margin:0">Applications</h2>
           <div class="row scanbar">
             <span class="muted" id="scanInfo">Not scanned yet.</span>
-            <select id="scanDays" title="How far back the first scan looks"><option value="30">First scan: 30 days</option><option value="60" selected>First scan: 60 days</option><option value="120">First scan: 120 days</option></select>
+            <select id="scanDays" title="How far back the first scan looks"><option value="30">Past 30 days</option><option value="60" selected>Past 60 days</option><option value="120">Past 120 days</option><option value="365">Past year</option></select>
             <button id="scanBtn">Connect Gmail and scan</button>
           </div>
         </div>
@@ -245,15 +292,19 @@
         <div class="toolbar">
           <input id="fSearch" placeholder="Search company or position...">
           <select id="fSource"><option value="all">All sources</option></select>
-          <select id="fSize"><option value="25">25 per page</option><option value="50">50 per page</option><option value="100">100 per page</option></select>
         </div>
         <table><thead><tr><th>Company</th><th>Position</th><th>Status</th><th>Source</th><th>Applied</th><th></th></tr></thead><tbody id="appRows"></tbody></table>
         <p class="muted" id="appEmpty"></p>
-        <div class="pager"><span class="muted" id="pageInfo"></span><div class="btns"><button class="ghost small" id="pgPrev">Previous</button><button class="ghost small" id="pgNext">Next</button></div></div>
+        <div id="moreSentinel" class="more hidden"><button class="ghost" id="moreBtn">Show more</button></div>
+        <div class="pager" id="pager"><span class="muted" id="pageInfo"></span>
+          <div class="btns"><select id="fSize"><option value="25">25 per page</option><option value="50">50 per page</option><option value="100">100 per page</option></select>
+            <button class="ghost small" id="pgPrev">Previous</button><button class="ghost small" id="pgNext">Next</button></div></div>
       </div>
     </section>
 
-    <section id="tab-setup" class="hidden">
+    <section id="tab-resume" class="hidden">
+      <div class="stepper" id="stepper"><span class="stp" data-s="1"><i>1</i>Gemini key</span><span class="stp" data-s="2"><i>2</i>Your CV</span><span class="stp" data-s="3"><i>3</i>Generate</span></div>
+      <details class="step" id="step1" open><summary><span class="sn">1</span><span class="st1">Add your free Gemini key</span><span class="sdone" id="done1"></span></summary>
       <div class="card guide">
         <strong>How to get your free Gemini key</strong>
         <div class="gwrap">
@@ -289,26 +340,8 @@
         </div>
         <p id="vaultMsg" class="muted"></p>
       </div>
-      <div class="card">
-        <strong>Email replies</strong>
-        <p class="muted">Lets you write a reply with AI and save it to your Gmail Drafts (or send it, if the site owner has turned sending on). This asks Google for one extra permission, to create drafts and send mail. You can turn it off any time here, and remove the permission at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">your Google permissions page</a>.</p>
-        <div class="row"><button id="repAllow" class="ghost">Allow replies</button><button id="repOff" class="ghost hidden">Turn replies off</button><span id="repState" class="muted"></span></div>
-      </div>
-      <div class="card">
-        <strong>Notifications</strong>
-        <p class="muted">Get a notification on this device when a scan finds new applications or a rejection, interview or offer. They appear after a scan (the app also scans when you open it); there are no alerts while the app is closed. On iPhone, add the app to your Home Screen first.</p>
-        <div class="row"><button id="notifBtn" class="ghost">Turn on notifications</button><span id="notifState" class="muted"></span></div>
-      </div>
-      <div class="card">
-        <strong>Delete my data</strong>
-        <p class="muted">Permanently deletes your applications, CV, generated documents, saved key and scan history from this site. It cannot be undone. Your Google account and Gmail are not touched. To also remove Gmail access, use <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">your Google permissions page</a>.</p>
-        <label>Type DELETE to confirm</label><input id="delConfirm" autocomplete="off">
-        <button id="delAll" class="ghost">Delete all my data</button>
-        <p id="delMsg" class="muted"></p>
-      </div>
-    </section>
-
-    <section id="tab-cv" class="hidden">
+      </details>
+      <details class="step" id="step2" open><summary><span class="sn">2</span><span class="st1">Add your CV</span><span class="sdone" id="done2"></span></summary>
       <div class="card">
         <strong>Your core CV</strong>
         <p class="muted" id="cvInfo">No CV saved yet.</p>
@@ -319,9 +352,8 @@
         <button id="cvSave">Read and save my CV</button>
         <p id="cvMsg" class="muted"></p>
       </div>
-    </section>
-
-    <section id="tab-gen" class="hidden">
+      </details>
+      <details class="step" id="step3" open><summary><span class="sn">3</span><span class="st1">Generate a tailored CV and cover letter</span><span class="sdone" id="done3"></span></summary>
       <div class="card">
         <strong>Generate a tailored CV and cover letter</strong>
         <p class="muted">Each button makes one Gemini call, so you only use quota for what you need.</p>
@@ -342,6 +374,25 @@
         </div>
       </div>
       <div class="card"><strong>Previous generations</strong><div id="hist" class="muted">Nothing yet.</div></div>
+      </details>
+      <h2 class="sect">Other settings</h2>
+      <div class="card">
+        <strong>Email replies</strong>
+        <p class="muted">Lets you write a reply with AI and save it to your Gmail Drafts (or send it, if the site owner has turned sending on). This asks Google for one extra permission, to create drafts and send mail. You can turn it off any time here, and remove the permission at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">your Google permissions page</a>.</p>
+        <div class="row"><button id="repAllow" class="ghost">Allow replies</button><button id="repOff" class="ghost hidden">Turn replies off</button><span id="repState" class="muted"></span></div>
+      </div>
+      <div class="card">
+        <strong>Notifications</strong>
+        <p class="muted">Get a notification on this device when a scan finds new applications or a rejection, interview or offer. They appear after a scan (the app also scans when you open it); there are no alerts while the app is closed. On iPhone, add the app to your Home Screen first.</p>
+        <div class="row"><button id="notifBtn" class="ghost">Turn on notifications</button><span id="notifState" class="muted"></span></div>
+      </div>
+      <div class="card">
+        <strong>Delete my data</strong>
+        <p class="muted">Permanently deletes your applications, CV, generated documents, saved key and scan history from this site. It cannot be undone. Your Google account and Gmail are not touched. To also remove Gmail access, use <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">your Google permissions page</a>.</p>
+        <label>Type DELETE to confirm</label><input id="delConfirm" autocomplete="off">
+        <button id="delAll" class="ghost">Delete all my data</button>
+        <p id="delMsg" class="muted"></p>
+      </div>
     </section>
   </div>
 <div id="rm" class="modal hidden"><div class="box">
@@ -363,6 +414,18 @@
     </div>
   </div>
   <p id="rmMsg" class="muted"></p>
+</div></div>
+<div id="em" class="modal hidden"><div class="box">
+  <div class="row" style="justify-content:space-between;align-items:flex-start"><div><strong id="emTitle"></strong><div class="muted" id="emMeta"></div></div><button class="ghost small" id="emClose">Close</button></div>
+  <p class="muted flag hidden" id="emFlag"></p>
+  <div class="mailview" id="emText">Loading the latest email...</div>
+  <div class="ctas"><a class="cta cta-mail" id="emGmail" target="_blank" rel="noopener">Show on Gmail</a><button class="cta cta-reply" id="emReply">Reply</button></div>
+</div></div>
+<div id="tour" class="modal hidden"><div class="box tourbox">
+  <div class="row" style="justify-content:space-between"><strong>How to use NextStep</strong><button class="ghost small" id="tourClose">Close</button></div>
+  <div class="gvideo hidden" id="tourVideoBox"><video id="tourVideo" controls preload="metadata" playsinline><source src="/static/app-tour.mp4" type="video/mp4"></video></div>
+  <div class="tourstep" id="tourStep"></div>
+  <div class="cnav"><div class="dots" id="tourDots"></div><div class="row"><button class="ghost small" id="tourPrev">Back</button><button class="small" id="tourNext">Next</button></div></div>
 </div></div>
 <p class="muted" style="text-align:center;margin-top:14px;margin-bottom:8px;font-size:13px"><a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></p>
 </main>
@@ -433,6 +496,7 @@ async function refreshVault() {
   $("vaultNew").classList.toggle("hidden", snap.exists());
   $("vaultLocked").classList.toggle("hidden", !snap.exists() || !!geminiKey);
   $("vaultOpen").classList.toggle("hidden", !geminiKey);
+  updateSteps();
 }
 $("vaultSave").onclick = async () => {
   const key = $("keyIn").value.trim(), p1 = $("pass1").value, p2 = $("pass2").value;
@@ -466,13 +530,25 @@ $("keyTest").onclick = async () => {
 const cvRef = () => doc(db, "users", auth.currentUser.uid, "cv", "core");
 async function loadCv() {
   const snap = await getDoc(cvRef());
-  if (!snap.exists()) { coreCv = null; $("cvInfo").textContent = "No CV saved yet."; return; }
+  if (!snap.exists()) { coreCv = null; $("cvInfo").textContent = "No CV saved yet."; updateSteps(); return; }
   const d = snap.data();
   coreCv = { text: d.text, struct: JSON.parse(d.struct), filename: d.filename };
   $("cvInfo").textContent = `Saved: ${d.filename} (${coreCv.struct.sections.length} sections).`;
+  updateSteps();
 }
+// resume builder: progress strip, finished steps fold away (and can be opened again to edit)
+function updateSteps() {
+  const keyOk = !!geminiKey, cvOk = !!coreCv;
+  const set = (n, ok, label) => { $("done" + n).textContent = ok ? label : ""; document.querySelector(`.stp[data-s="${n}"]`).classList.toggle("done", ok); };
+  set(1, keyOk, "Done"); set(2, cvOk, "Saved"); set(3, keyOk && cvOk, "Ready");
+  const touched = updateSteps.touched || (updateSteps.touched = {});
+  if (!touched[1]) $("step1").open = !keyOk;
+  if (!touched[2]) $("step2").open = !cvOk;
+  $("step3").open = true;
+}
+document.querySelectorAll("details.step").forEach((d) => d.querySelector("summary").addEventListener("click", () => { (updateSteps.touched || (updateSteps.touched = {}))[d.id.slice(-1)] = true; }));
 $("cvSave").onclick = async () => {
-  if (!geminiKey) { $("cvMsg").textContent = "Unlock your Gemini key in Setup first."; return; }
+  if (!geminiKey) { $("cvMsg").textContent = "Unlock your Gemini key in Resume builder first."; return; }
   const file = $("cvFile").files[0], text = $("cvText").value;
   if (!file && !text.trim()) { $("cvMsg").textContent = "Choose a file or paste your CV."; return; }
   const form = new FormData();
@@ -543,7 +619,7 @@ async function saveResult(kind, job, r) {
 }
 
 async function runGenerate(kind, job) {
-  if (!geminiKey) { $("gMsg").textContent = "Unlock your Gemini key in Setup first."; return; }
+  if (!geminiKey) { $("gMsg").textContent = "Unlock your Gemini key in Resume builder first."; return; }
   if (!coreCv) { $("gMsg").textContent = "Save your CV first."; return; }
   $("gMsg").textContent = `Generating your ${label(kind)} (up to a minute)...`;
   $("gCvBtn").disabled = $("gLetterBtn").disabled = true;
@@ -651,10 +727,11 @@ async function runScan(auto) {
     total = list.ids.length;
     if (!total) $("scanMsg").textContent = "No new email since the last scan.";
     const working = new Map(apps.map(({ id, ...a }) => [a.threadId, a]));
-    for (let i = 0; i < total; i += 40) {
-      $("scanMsg").textContent = `Reading your mail: ${done} of ${total}...`;
+    const STEP = 20;   // small batches so applications show up in the list while the scan runs
+    for (let i = 0; i < total; i += STEP) {
+      $("scanMsg").textContent = `Reading your mail: ${done} of ${total}. Found ${added} new so far...`;
       token = await getGmailToken();   // refreshes if the hour ran out mid-scan
-      const chunk = list.ids.slice(i, i + 40);
+      const chunk = list.ids.slice(i, i + STEP);
       let r = null;
       for (let attempt = 0; attempt < 5 && !r; attempt++) {
         try {
@@ -710,7 +787,8 @@ function sourceOf(a) {
   if (hit) return hit[1];
   return ATS.some((d) => domain === d || domain.endsWith("." + d)) ? "Company portal (ATS)" : "Company portal";
 }
-const view = Object.assign({ days: "all", status: "all", source: "all", query: "", page: 1, pageSize: 25 }, (() => { try { return JSON.parse(localStorage.getItem("jt.view") || "{}"); } catch { return {}; } })());
+const MORE_STEP = 20, mobileMQ = window.matchMedia("(max-width:640px)");
+const view = Object.assign({ days: "all", status: "all", source: "all", query: "", page: 1, pageSize: 25, shown: MORE_STEP }, (() => { try { return JSON.parse(localStorage.getItem("jt.view") || "{}"); } catch { return {}; } })());
 const saveView = () => { try { localStorage.setItem("jt.view", JSON.stringify(view)); } catch {} };
 // Applied date is a plain day, so "Last 24 hours" means today and yesterday.
 function inRange(a) {
@@ -733,15 +811,18 @@ function renderDashboard() {
   const tiles = $("tiles"); tiles.textContent = "";
   const add = (key, label, n, color) => {
     const b = document.createElement("button"); b.className = "tile" + (view.status === key ? " active" : ""); b.dataset.status = key;
-    const num = document.createElement("div"); num.className = "num"; num.textContent = n;
+    const top = document.createElement("div"); top.className = "top";
+    const num = document.createElement("div"); num.className = "num"; num.textContent = n; top.appendChild(num);
+    if (key !== "all" && key !== "unseen" && total) { const p = document.createElement("span"); p.className = "pct"; p.textContent = Math.round((n / total) * 100) + "%"; top.appendChild(p); }
     const lbl = document.createElement("div"); lbl.className = "lbl";
     const dot = document.createElement("span"); dot.className = "dot"; dot.style.background = color; lbl.append(dot, label);
-    if (key !== "all" && total) { const p = document.createElement("span"); p.className = "pct"; p.textContent = Math.round((n / total) * 100) + "%"; lbl.appendChild(p); }
-    b.append(num, lbl);
-    b.onclick = () => { view.status = view.status === key ? "all" : key; view.page = 1; renderDashboard(); renderTable(); };
+    b.append(top, lbl);
+    b.onclick = () => { view.status = view.status === key ? "all" : key; view.page = 1; view.shown = MORE_STEP; renderDashboard(); renderTable(); $("listCard").scrollIntoView({ behavior: "smooth", block: "start" }); };
     tiles.appendChild(b);
   };
   add("all", "total", total, "var(--text)");
+  const fresh = scoped.filter((a) => a.unseen).length;
+  if (fresh) { add("unseen", "new replies", fresh, "var(--gold)"); tiles.lastChild.classList.add("new"); }
   const four = ["applied", "interview", "offer", "rejected"];
   four.concat(order.filter((k) => !four.includes(k))).forEach((k) => add(k, k, counts[k] || 0, STATUS_COLORS[k] || "#a78bda"));
 }
@@ -754,38 +835,97 @@ function refreshSourceOptions() {
 }
 function renderTable() {
   const q = norm(view.query);
-  const rows = apps.filter(inRange).filter((a) => (view.source === "all" || sourceOf(a) === view.source) && (view.status === "all" || statusKey(a.status) === view.status)
-    && (!q || norm(a.company + " " + a.position).includes(q))).sort((a, b) => (b.appliedDate || "").localeCompare(a.appliedDate || ""));
+  const rows = apps.filter(inRange).filter((a) => (view.source === "all" || sourceOf(a) === view.source)
+    && (view.status === "all" || (view.status === "unseen" ? !!a.unseen : statusKey(a.status) === view.status))
+    && (!q || norm(a.company + " " + a.position).includes(q)))
+    .sort((a, b) => (b.unseen ? 1 : 0) - (a.unseen ? 1 : 0) || (b.appliedDate || "").localeCompare(a.appliedDate || ""));   // unread replies first
+  const mobile = mobileMQ.matches;
   const pages = Math.max(1, Math.ceil(rows.length / view.pageSize)); view.page = Math.min(Math.max(1, view.page), pages); saveView();
-  const from = (view.page - 1) * view.pageSize, body = $("appRows"); body.textContent = "";
-  rows.slice(from, from + view.pageSize).forEach((a) => {
-    const tr = document.createElement("tr");
+  const from = mobile ? 0 : (view.page - 1) * view.pageSize, to = mobile ? Math.min(view.shown, rows.length) : from + view.pageSize, body = $("appRows"); body.textContent = "";
+  rows.slice(from, to).forEach((a) => {
+    const tr = document.createElement("tr"); if (a.unseen) tr.className = "unseen";
     const cell = (txt) => { const td = document.createElement("td"); td.textContent = txt || ""; tr.appendChild(td); return td; };
-    cell(a.company); cell(a.position);
+    const cTd = cell(a.company);
+    if (a.unseen) { const nb = document.createElement("span"); nb.className = "newb"; nb.textContent = "New"; cTd.appendChild(nb); }
+    cell(a.position);
     const sTd = document.createElement("td"), sel = document.createElement("select"); sel.className = "st " + statusKey(a.status);
     STATUS_ORDER.forEach((o) => { const op = document.createElement("option"); op.textContent = o; op.selected = o === statusKey(a.status); sel.appendChild(op); });
     sel.onchange = async () => { a.status = sel.value; await updateDoc(doc(appsCol(), a.id), { status: sel.value }); renderDashboard(); renderTable(); };
     sTd.appendChild(sel); tr.appendChild(sTd);
     cell(sourceOf(a)); cell(a.appliedDate);
     const act = document.createElement("td"); act.className = "acts";
-    if ((a.gmailLink || "").startsWith("https://mail.google.com/")) { const l = document.createElement("a"); l.href = a.gmailLink; l.target = "_blank"; l.rel = "noopener"; l.textContent = "email ↗"; act.appendChild(l); }
+    if (a.threadId) { const eb = document.createElement("button"); eb.className = "cta cta-mail"; eb.textContent = "✉ Email"; eb.onclick = () => openEmail(a); act.appendChild(eb); }
     if (!replyBlocked(a)) {   // no Reply button at all when replying is not possible for this row
-      const rb = document.createElement("button"); rb.className = "ghost small"; rb.style.marginLeft = "8px"; rb.textContent = "Reply"; rb.onclick = () => openReply(a); act.appendChild(rb);
+      const rb = document.createElement("button"); rb.className = "cta cta-reply"; rb.textContent = "↩ Reply"; rb.onclick = () => openReply(a); act.appendChild(rb);
     }
     tr.appendChild(act); body.appendChild(tr);
   });
   $("appEmpty").textContent = rows.length ? "" : (apps.length ? "No applications match these filters." : "No applications yet. Connect Gmail and scan.");
-  $("pageInfo").textContent = rows.length ? `Showing ${from + 1}-${Math.min(from + view.pageSize, rows.length)} of ${rows.length}` : "";
+  $("pageInfo").textContent = rows.length ? (mobile ? `Showing ${to} of ${rows.length}` : `Showing ${from + 1}-${Math.min(to, rows.length)} of ${rows.length}`) : "";
   $("pgPrev").disabled = view.page <= 1; $("pgNext").disabled = view.page >= pages;
+  $("moreSentinel").classList.toggle("hidden", !(mobile && to < rows.length));
+  renderBanner();
 }
+// phones: more rows load as you scroll down (and a button as a fallback)
+const showMore = () => { view.shown += MORE_STEP; renderTable(); };
+$("moreBtn").onclick = showMore;
+new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting) && mobileMQ.matches && !$("moreSentinel").classList.contains("hidden")) showMore(); }, { rootMargin: "300px" }).observe($("moreSentinel"));
+mobileMQ.addEventListener("change", () => renderTable());
+// banner: replies that arrived since you last looked
+function renderBanner() {
+  const fresh = apps.filter((a) => a.unseen), box = $("updBanner");
+  box.classList.toggle("hidden", !fresh.length); if (!fresh.length) return;
+  box.textContent = "";
+  const bt = document.createElement("div"); bt.className = "bt";
+  const t = document.createElement("span"); t.textContent = `${fresh.length} new ${fresh.length === 1 ? "update" : "updates"} in your inbox`;
+  const dis = document.createElement("button"); dis.className = "ghost small"; dis.textContent = "Mark all as seen"; dis.onclick = () => markSeen(fresh);
+  bt.append(t, dis); box.appendChild(bt);
+  const ul = document.createElement("ul");
+  fresh.slice(0, 5).forEach((a) => {
+    const li = document.createElement("li");
+    const s = document.createElement("span"); s.className = "st " + statusKey(a.status); s.textContent = statusKey(a.status);
+    const n = document.createElement("span"); n.textContent = `${a.company}: ${a.position}`;
+    const b = document.createElement("button"); b.className = "cta cta-mail"; b.style.minHeight = "34px"; b.style.padding = "4px 14px"; b.textContent = "Read"; b.onclick = () => openEmail(a);
+    li.append(s, n, b); ul.appendChild(li);
+  });
+  if (fresh.length > 5) { const li = document.createElement("li"); li.className = "muted"; li.textContent = `and ${fresh.length - 5} more (marked New in the list)`; ul.appendChild(li); }
+  box.appendChild(ul);
+}
+async function markSeen(list) {
+  list.forEach((a) => { a.unseen = false; });
+  renderDashboard(); renderTable();
+  try { for (let i = 0; i < list.length; i += 400) { const batch = writeBatch(db); list.slice(i, i + 400).forEach((a) => batch.update(doc(appsCol(), a.id), { unseen: false })); await batch.commit(); } } catch {}
+}
+// email popup: the latest message in the thread, with Show on Gmail and Reply
+let em = null;
+async function openEmail(a) {
+  em = a;
+  $("emTitle").textContent = `${a.company}: ${a.position}`;
+  $("emMeta").textContent = `${statusKey(a.status)}  ·  applied ${a.appliedDate || ""}`;
+  $("emFlag").textContent = a.matchNote || ""; $("emFlag").classList.toggle("hidden", !a.matchNote);
+  $("emText").textContent = (a.lastSummary || a.description || "Loading the latest email...").slice(0, 2500);
+  $("emGmail").href = (a.gmailLink || "").startsWith("https://mail.google.com/") ? a.gmailLink : "https://mail.google.com/mail/u/0/#inbox";
+  $("emReply").classList.toggle("hidden", !!replyBlocked(a));
+  $("em").classList.remove("hidden");
+  if (a.unseen) markSeen([a]);
+  try {
+    const t = await getGmailToken();
+    const r = await api("/api/reply/context", { method: "POST", headers: gmailHeaders(t), body: JSON.stringify({ thread_id: a.threadId }) });
+    if (em !== a) return;
+    $("emMeta").textContent = `${r.direction === "sent" ? "Sent by you" : "From " + (r.from || "").replace(/<.*>/, "").trim()}  ·  ${new Date(r.date).toLocaleString()}  ·  ${r.messages} message${r.messages === 1 ? "" : "s"} in this chain`;
+    $("emText").textContent = (r.subject ? r.subject + "\n\n" : "") + (r.text || "(no text in this email)");
+  } catch (e) { if (em === a && !a.lastSummary && !a.description) $("emText").textContent = "Could not load the email here (" + e.message + "). Use Show on Gmail."; }
+}
+$("emClose").onclick = () => { $("em").classList.add("hidden"); em = null; };
+$("emReply").onclick = () => { const a = em; $("em").classList.add("hidden"); em = null; if (a) openReply(a); };
 function renderApps() { refreshSourceOptions(); renderDashboard(); renderTable(); }
 function syncControls() {
   $("fSearch").value = view.query; $("fSize").value = String(view.pageSize);
   document.querySelectorAll("#ranges button").forEach((b) => b.classList.toggle("active", b.dataset.days === String(view.days)));
 }
-document.querySelectorAll("#ranges button").forEach((b) => b.onclick = () => { view.days = b.dataset.days; view.page = 1; syncControls(); renderDashboard(); renderTable(); });
-$("fSearch").addEventListener("input", () => { view.query = $("fSearch").value; view.page = 1; renderTable(); });
-$("fSource").onchange = () => { view.source = $("fSource").value; view.page = 1; renderTable(); };
+document.querySelectorAll("#ranges button").forEach((b) => b.onclick = () => { view.days = b.dataset.days; view.page = 1; view.shown = MORE_STEP; syncControls(); renderDashboard(); renderTable(); });
+$("fSearch").addEventListener("input", () => { view.query = $("fSearch").value; view.page = 1; view.shown = MORE_STEP; renderTable(); });
+$("fSource").onchange = () => { view.source = $("fSource").value; view.page = 1; view.shown = MORE_STEP; renderTable(); };
 $("fSize").onchange = () => { view.pageSize = +$("fSize").value; view.page = 1; renderTable(); };
 $("pgPrev").onclick = () => { view.page--; renderTable(); }; $("pgNext").onclick = () => { view.page++; renderTable(); };
 syncControls();
@@ -860,7 +1000,7 @@ $("rmAllow").onclick = async () => {
 $("rmBody").addEventListener("input", () => { if (rm) { const v = $("rmBody").value; v ? localStorage.setItem(draftKey(), v) : localStorage.removeItem(draftKey()); $("rmConfirm").classList.add("hidden"); } });
 
 $("rmWrite").onclick = async () => {
-  if (!geminiKey) { rmMsg("Unlock your Gemini key in Setup first."); return; }
+  if (!geminiKey) { rmMsg("Unlock your Gemini key in Resume builder first."); return; }
   rmMsg("Writing...");
   try {
     const t = await getGmailToken(true);
@@ -965,7 +1105,7 @@ $("delAll").onclick = async () => {
 // ---------- tabs and sign-in ----------
 document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
   document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b));
-  for (const t of ["apps", "setup", "cv", "gen"]) $("tab-" + t).classList.toggle("hidden", t !== b.dataset.tab);
+  for (const t of ["apps", "resume"]) $("tab-" + t).classList.toggle("hidden", t !== b.dataset.tab);
 });
 $("signIn").onclick = async () => {
   $("authErr").textContent = "";
@@ -984,11 +1124,42 @@ onAuthStateChanged(auth, async (user) => {
   $("signedOut").classList.toggle("hidden", !!user);
   $("signedIn").classList.toggle("hidden", !user);
   $("who").classList.toggle("hidden", !user);
+  $("tourBtn").classList.toggle("hidden", !user);
   if (!user) return;
   $("whoName").textContent = user.displayName || user.email;
-  try { await refreshVault(); await loadCv(); await loadHistory(); await loadApps(); await loadReplySettings(); autoScanIfStale(); }
+  try { await refreshVault(); await loadCv(); await loadHistory(); await loadApps(); await loadReplySettings(); autoScanIfStale();
+    let toured = false; try { toured = !!localStorage.getItem("jt.toured"); } catch {}
+    if (!toured && !apps.length) openTour(); }
   catch (e) { $("vaultMsg").textContent = "Could not read your data: " + e.message; }
 });
+
+// ---------- how to use: short walkthrough (an optional video appears if /static/app-tour.mp4 exists) ----------
+const TOUR = [
+  { h: "What NextStep does", p: "NextStep reads your job application emails in Gmail and keeps every company, role and status in one list. It also helps you tailor your CV and write replies to recruiters. You stay in control: Gmail access is read-only unless you turn on replies.", l: [] },
+  { h: "1. Scan your inbox", p: "On the Applications tab tap Connect Gmail and scan. Pick how far back to look (for example Past 60 days). Applications appear in the list while the scan is still running. After that NextStep checks for new mail whenever you open it.", l: [] },
+  { h: "2. Read your overview", p: "The donut and tiles count your applications by status. Tap a tile to jump straight to those applications. Use the time pills, the search box and the source filter to narrow the list.", l: ["Applied, Interview, Offer, Rejected and Update are set for you from the emails","Change a status yourself from the drop-down on any row"] },
+  { h: "3. Act on every application", p: "Each row has two big buttons. Email opens the latest message right here, with Show on Gmail if you want the full thread. Reply lets you write an answer with AI and save it to your Gmail drafts.", l: ["Reply appears only where a recruiter can actually be reached","Turn replies on under Resume builder, Other settings"] },
+  { h: "4. Never miss an update", p: "When a recruiter writes back, a gold banner appears at the top of Applications and the row is marked New. Replies from a company's own address are linked to the right application, even when they arrive as a new email thread.", l: ["If a company has several roles, NextStep picks the best match and flags it so you can check"] },
+  { h: "5. Build your CV and letters", p: "Open Resume builder and follow three steps: add your free Gemini key (a video shows how), add your CV, then paste a job description and generate a tailored CV or cover letter as a PDF.", l: ["Your key is locked with your passphrase in your browser","Each button makes one Gemini call, so you only use what you need"] },
+  { h: "6. Put it on your phone", p: "Use Install app in the top bar. On iPhone tap Share, then Add to Home Screen. Switch light or dark with the button at the top. You are ready to go.", l: [] },
+];
+let tourAt = 0;
+function paintTour() {
+  const s = TOUR[tourAt]; const box = $("tourStep"); box.textContent = "";
+  const tn = document.createElement("div"); tn.className = "tn"; tn.textContent = `Step ${tourAt + 1} of ${TOUR.length}`;
+  const h = document.createElement("h3"); h.textContent = s.h; const p = document.createElement("p"); p.textContent = s.p;
+  box.append(tn, h, p);
+  if (s.l.length) { const ul = document.createElement("ul"); s.l.forEach((x) => { const li = document.createElement("li"); li.textContent = x; ul.appendChild(li); }); box.appendChild(ul); }
+  $("tourDots").textContent = ""; TOUR.forEach((_, i) => { const d = document.createElement("i"); if (i === tourAt) d.className = "on"; d.onclick = () => { tourAt = i; paintTour(); }; $("tourDots").appendChild(d); });
+  $("tourPrev").disabled = tourAt === 0; $("tourNext").textContent = tourAt === TOUR.length - 1 ? "Done" : "Next";
+}
+function openTour() { tourAt = 0; paintTour(); $("tour").classList.remove("hidden"); }
+function closeTour() { $("tour").classList.add("hidden"); try { localStorage.setItem("jt.toured", "1"); } catch {} const v = $("tourVideo"); if (v) v.pause(); }
+$("tourBtn").onclick = openTour; $("tourClose").onclick = closeTour;
+$("tourPrev").onclick = () => { if (tourAt > 0) { tourAt--; paintTour(); } };
+$("tourNext").onclick = () => { if (tourAt < TOUR.length - 1) { tourAt++; paintTour(); } else closeTour(); };
+// show the video box only if the file exists
+(() => { const v = $("tourVideo"); v.addEventListener("loadedmetadata", () => $("tourVideoBox").classList.remove("hidden")); v.load(); })();
 
 // onboarding carousels (two separate ones: how it works / why Google sign-in)
 document.querySelectorAll(".carousel").forEach((root, idx) => {
