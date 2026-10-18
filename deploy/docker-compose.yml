@@ -11,6 +11,8 @@ services:
     env_file: .env
     expose:
       - "8000"
+    volumes:
+      - nextstep_data:/data   # join counter (joins.json)
     mem_limit: 600m          # keeps one app from starving the others
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/manifest.json')"]
@@ -60,5 +62,6 @@ services:
     mem_limit: 100m
 
 volumes:
+  nextstep_data:
   caddy_data:
   caddy_config:

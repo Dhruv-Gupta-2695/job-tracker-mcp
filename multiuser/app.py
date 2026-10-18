@@ -85,11 +85,29 @@ def me(user: dict = Depends(current_user)):
     return user
 
 
+class JoinReq(BaseModel):
+    event: str   # "signin" or "gmail"
+
+
+@app.post("/api/joined")
+def joined(req: JoinReq, user: dict = Depends(current_user)):
+    """Anonymous join counter: tells the owner on Telegram when a new person signs in or connects Gmail."""
+    from multiuser import joins
+    if req.event not in joins.KINDS:
+        raise HTTPException(status_code=400, detail="Unknown event.")
+    rate_limit(user["uid"], "join")
+    try:
+        joins.record(user["uid"], req.event)
+    except Exception as exc:  # noqa: BLE001 - counting must never break sign-in
+        print(f"[joins] could not record: {type(exc).__name__}", flush=True)
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------- limits ---
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_JD_CHARS = 20000
 MAX_CV_CHARS = 30000
-_RATE = {"generate": (6, 3600), "cv": (10, 3600), "check": (10, 600), "scan": (12, 3600), "letter": (10, 3600), "reply": (20, 3600), "draft": (30, 3600)}  # (calls, seconds) per user
+_RATE = {"generate": (6, 3600), "cv": (10, 3600), "check": (10, 600), "scan": (12, 3600), "letter": (10, 3600), "reply": (20, 3600), "draft": (30, 3600), "join": (10, 3600)}  # (calls, seconds) per user
 _hits: dict[tuple[str, str], list[float]] = {}
 
 

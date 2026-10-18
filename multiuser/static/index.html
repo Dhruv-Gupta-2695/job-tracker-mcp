@@ -705,6 +705,7 @@ function getGmailToken(needCompose = false) {
         if (r.error) return reject(new Error(r.error === "access_denied" ? "Gmail access was not allowed." : "Could not connect Gmail (" + r.error + ")."));
         gmailToken = r.access_token; gmailTokenExp = Date.now() + (r.expires_in || 3600) * 1000;
         gmailHasCompose = google.accounts.oauth2.hasGrantedAllScopes(r, GMAIL_COMPOSE);
+        reportJoin("gmail");
         resolve(gmailToken);
       },
       error_callback: () => reject(new Error("The Gmail permission window was closed.")),
@@ -713,6 +714,12 @@ function getGmailToken(needCompose = false) {
   });
 }
 
+// anonymous join counter: tells the owner (on Telegram) when a new person signs in or connects Gmail
+async function reportJoin(event) {
+  const flag = "jt.joined." + event + "." + auth.currentUser.uid;
+  try { if (localStorage.getItem(flag)) return; } catch {}
+  try { await api("/api/joined", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event }) }); try { localStorage.setItem(flag, "1"); } catch {} } catch {}
+}
 async function loadApps() {
   const [snap, meta] = await Promise.all([getDocs(appsCol()), getDoc(metaRef())]);
   apps = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -1142,7 +1149,7 @@ onAuthStateChanged(auth, async (user) => {
   $("tourBtn").classList.toggle("hidden", !user);
   if (!user) return;
   $("whoName").textContent = user.displayName || user.email;
-  try { await refreshVault(); await loadCv(); await loadHistory(); await loadApps(); await loadReplySettings(); autoScanIfStale();
+  try { await refreshVault(); await loadCv(); await loadHistory(); await loadApps(); await loadReplySettings(); autoScanIfStale(); reportJoin("signin");
     let toured = false; try { toured = !!localStorage.getItem("jt.toured"); } catch {}
     if (!toured && !apps.length) openTour(); }
   catch (e) { $("vaultMsg").textContent = "Could not read your data: " + e.message; }

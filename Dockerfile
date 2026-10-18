@@ -13,7 +13,8 @@ COPY fonts ./fonts
 COPY multiuser ./multiuser
 
 # Run as a normal user, not root.
-RUN useradd --create-home app && chown -R app /app
+# /data holds the small join counter (kept in a Docker volume so it survives rebuilds).
+RUN useradd --create-home app && mkdir -p /data && chown -R app /app /data
 USER app
 
 EXPOSE 8000
