@@ -223,6 +223,17 @@ Known limit of matching: two different companies whose names share a domain labe
 
 Exit check: a scan shows rows appearing as it runs; opening Email shows the latest message; a new HR reply from a company address updates the right row and raises the banner; the Resume builder tab walks from key to CV to generate.
 
+### Phase 16: join alerts on Telegram (built, branch `phase-16-join-alerts`)
+Goal: know how close the app is to Google's 100-user limit for unverified apps, so there is time to act before the 99th person arrives.
+
+- Two anonymous counters: people who signed in, and people who connected Gmail. The Gmail count is the one Google caps, so milestone warnings (50, 75, 90, 99 and 100) are sent on it.
+- The browser reports each event once per person and device (`POST /api/joined`, after sign-in and after the first Gmail token). The server verifies the sign-in token, counts the person once by a salted hash of the user id, and sends a short Telegram message with the running totals, for example "another person connected Gmail. 12 of 100 Gmail slots used (15 have signed in)".
+- Storage: a small `joins.json` file in a Docker volume (`nextstep_data`) so counts survive rebuilds. It holds only hashed ids, no names or emails, and nothing personal goes to Telegram. The privacy page mentions this counter.
+- Configuration on the server (`deploy/.env`): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `JOIN_LIMIT` (default 100). With the Telegram settings empty, counting still works and alerts are skipped. A failing alert never breaks sign-in.
+- Counts start from the day of deployment: existing users are counted the next time they sign in or connect Gmail, so the first alerts include them.
+
+Exit check: a new account signing in produces a Telegram message with updated totals; the same person signing in again does not; connecting Gmail raises the Gmail count; restarting the container keeps the counts.
+
 ### Future aspects (not scheduled)
 Ideas that are not part of any phase yet. Each is built only if it proves needed once the phase before it ships.
 

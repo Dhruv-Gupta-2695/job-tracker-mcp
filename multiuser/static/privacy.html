@@ -16,7 +16,7 @@
 <p>If you connect Gmail, the app asks for read-only access (the gmail.readonly permission). Access is requested only when you press the scan button and is used for that scan only. We do not store your Gmail access tokens. Emails are read on our server in memory to find job-related messages, and then discarded. Only the application details listed above are saved, in your private space. We never send, delete or change your email.</p>
 
 <h2>How your data is stored and who can see it</h2>
-<p>Your data is stored in Google Firebase (Firestore) under your own account id, protected by rules that let only you read or write it. The server that does the processing keeps no database and keeps no copy of your data after a request ends. Your Gemini key is sent with each AI request over an encrypted connection, used for that request only and not logged.</p>
+<p>Your data is stored in Google Firebase (Firestore) under your own account id, protected by rules that let only you read or write it. The server that does the processing keeps no database and keeps no copy of your data after a request ends. The one exception is an anonymous join counter: a one-way scrambled form of your account id is kept so the site owner can see how many people use the app. It holds no name, email or other details. Your Gemini key is sent with each AI request over an encrypted connection, used for that request only and not logged.</p>
 
 <h2>AI processing</h2>
 <p>To tailor your CV and write cover letters, the text of your CV and the job description are sent to Google's Gemini service using your own Gemini key, under your own Google AI terms.</p>
