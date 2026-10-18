@@ -436,7 +436,8 @@ def reply_context(req: ReplyContextReq, user: dict = Depends(current_user), x_gm
         mine = extract_email_address(last["from"]).lower() == me
         return {"subject": (last["subject"] or "").strip() or "(no subject)",
                 "direction": "sent" if mine else "received",
-                "date": datetime.fromtimestamp(last["ts"], ZoneInfo("UTC")).isoformat(), "messages": len(messages)}
+                "date": datetime.fromtimestamp(last["ts"], ZoneInfo("UTC")).isoformat(), "messages": len(messages),
+                "from": (last["from"] or "")[:200], "text": re.sub(r"\n{3,}", "\n\n", (last.get("body") or "").strip())[:2500]}
     return _reply_call(go)
 
 

@@ -2,7 +2,7 @@
 
 A personal job-application tracker that runs at zero cost. It reads your Gmail, records each application in a Google Sheet, tells you about replies on Telegram, and has a small web portal for viewing applications, tailoring CVs with AI, and writing or sending replies.
 
-Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 6 (multi-user) is built; Phase 7 (installable app and notifications) is built; Phase 8 (one home for the owner's data) is built; Phase 9 (reply writer and send) is built and deployed; Phase 10 (NextStep brand, portal UI and open beta access) is built; Phase 11 (always-on hosting) is built and deployed; Phase 12 (Market Analyst split) is built and deployed; Phase 13 (mobile layout) is built and deployed. Unscheduled ideas are listed under Future aspects.
+Status of this document: describes the system as built (single user), organised by delivery phase. Phases 0 to 5 are built and deployed. Phase 6 (multi-user) is built; Phase 7 (installable app and notifications) is built; Phase 8 (one home for the owner's data) is built; Phase 9 (reply writer and send) is built and deployed; Phase 10 (NextStep brand, portal UI and open beta access) is built; Phase 11 (always-on hosting) is built and deployed; Phase 12 (Market Analyst split) is built and deployed; Phase 13 (mobile layout) is built and deployed; Phase 14 (app UX update) is built and being tested. Unscheduled ideas are listed under Future aspects.
 
 ## Delivery phases
 
@@ -201,6 +201,23 @@ Goal: NextStep reads well on a phone (checked for iPhone 14 width).
 - Install: Android and desktop Chrome show the browser install prompt through the "Install app" button. iPhones do not support that prompt, so the same button shows Add to Home Screen steps.
 
 Exit check: no sideways scrolling on a phone, and the app installs from the iPhone home screen.
+
+### Phase 14: app UX update (in progress, branch `phase-14-app-ux`)
+Goal: make the Applications list faster to act on, make new replies impossible to miss, and fold the setup screens into one flow.
+
+- Overview tiles: number and percent share one line with the label underneath, so nothing overflows on narrow screens. Tapping a tile filters the list and scrolls to it.
+- Live scan: emails are read in batches of 20 and each batch is saved and drawn straight away, so applications appear while the scan runs. The scan message shows how many were found so far. The look-back menu now reads "Past 30 days", "Past 60 days" and so on.
+- Email popup: the "email" link is replaced by a large Email button that opens a popup with the latest message of the thread (sender, date, text). The popup has Show on Gmail and Reply. Stored text is shown first, then replaced by the live message when Gmail answers. The server's reply-context call now also returns the sender and message text.
+- Calls to action: Email is an outlined blue button and Reply is a solid gold one, both large and clearly different. Reply is still hidden where a reply cannot reach anyone.
+- Paging: on desktop the page-size menu and Previous/Next sit under the list. On phones paging is replaced by loading 20 more rows as you scroll (with a Show more button as backup).
+- Tabs: two tabs, Applications and Resume builder. Resume builder is one flow of three steps (Gemini key, Your CV, Generate) with a progress strip. A finished step folds away and can be reopened. Email replies, Notifications and Delete my data sit under "Other settings" on the same tab. Nothing was removed.
+- Prominent updates: a gold banner at the top lists replies that arrived since you last looked, each with a Read button and a "Mark all as seen" action. Those rows carry a New badge and a gold edge, sort to the top, and have their own "new replies" tile. A row counts as seen when you open its email. The flag is stored with the application (`unseen`).
+- Company matching (scenario: you apply on Naukri, then HR replies from the employer's own address in a new thread): a message that is not a fresh application receipt is now matched to an existing application by the sender's domain (for example `jiohotstar.com` to "JioHotstar") or by an identical sender address. No-reply addresses and job boards never match. With one application at that company the reply is attached directly. With several roles the best word match on the role title is used, ties go to the most recent, and the row is flagged "check it is the right role". Replies in the same Gmail thread still match by thread id as before. Reply wording that signals interview, offer or rejection updates the status. Plain replies mark the row "update".
+- How to use: a top-bar button opens a seven-step walkthrough, shown automatically once to a new user with no applications. A video slot (`/static/app-tour.mp4`) appears at the top of the walkthrough when that file is added.
+
+Known limit of matching: two different companies whose names share a domain label, or an employer that emails from a recruiting agency's domain, will not match; the email stays unlinked rather than attached to the wrong application.
+
+Exit check: a scan shows rows appearing as it runs; opening Email shows the latest message; a new HR reply from a company address updates the right row and raises the banner; the Resume builder tab walks from key to CV to generate.
 
 ### Future aspects (not scheduled)
 Ideas that are not part of any phase yet. Each is built only if it proves needed once the phase before it ships.
